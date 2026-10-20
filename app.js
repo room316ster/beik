@@ -2,17 +2,20 @@
  * ==============================================================================
  * JAVASCRIPT LOGIC - ระบบใบเบิกพัสดุ (143 รายการ 3 คอลัมน์ A4 หน้าเดียว)
  * ถอดแบบจากเอกสารจริง 100% พร้อมเชื่อมต่อ Google Sheets API & GitHub Pages
+ * รองรับการแบ่งบทบาท: เจ้าหน้าที่คีย์เบิกพัสดุ | เจ้าหน้าที่พัสดุคีย์จ่ายพัสดุ
+ * ระบบ Login, สมัครสมาชิก, จัดการโปรไฟล์, จัดการสมาชิก, และคิวคำขอรอจ่าย
  * ==============================================================================
  */
 
-// Web App URL เริ่มต้นของ Google Apps Script
-const DEFAULT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzYph3CyOyROLyo_KnAYluZS8lc20CHw-3HiJ9uuW7XgSTCSGH7erXDSaAFxnj9cgsXHA/exec";
+// Web App URL เริ่มต้นของ Google Apps Script (Version 5 Deployed)
+const DEFAULT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw00ssaHx4WEvK4aoZ6wk_p3zyOw8atXKKgBZ6tjL-FsT0VEt_wSONED-D2TpJdcTK4QA/exec";
 
 // LocalStorage Keys
 const STORAGE_KEYS = {
   WEB_APP_URL: "req_system_web_app_url",
   FORM_HEADER: "req_system_header",
-  REQUISITIONS: "req_system_history"
+  REQUISITIONS: "req_system_history",
+  CURRENT_USER: "req_system_current_user"
 };
 
 // ================= รายการพัสดุทั้ง 143 รายการ (ตรงตามภาพต้นฉบับ 100%) =================
@@ -171,13 +174,157 @@ const ITEMS_DATABASE = [
 let requisitionData = {};
 let filterOnlySelected = false;
 
+// ================= USER STATE & ROLES =================
+let currentUser = null;
+let pendingDispenseDocNo = null; // เก็บเลขที่ใบเบิกหากเจ้าหน้าที่พัสดุกำลังจ่ายพัสดุ
+let historyCache = [];
+let membersCache = [];
+
+function loadCurrentUser() {
+  const saved = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+  if (saved) {
+    try {
+      currentUser = JSON.parse(saved);
+      return;
+    } catch (e) {}
+  }
+  // ค่าเริ่มต้น: เจ้าหน้าที่ทั่วไป (ผู้ขอเบิก) เพื่อให้พร้อมใช้งานทันที
+  currentUser = {
+    id: "USR-0002",
+    username: "wit",
+    fullName: "นายวิทย์ ภูภักดี",
+    position: "นักวิชาการคอมพิวเตอร์ปฏิบัติการ",
+    department: "กลุ่มงานเทคโนโลยีสารสนเทศ",
+    role: "staff",
+    status: "อนุมัติแล้ว"
+  };
+  localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
+}
+
+function isStaffUser() {
+  return !currentUser || currentUser.role === "staff";
+}
+
+function isSupplyUser() {
+  return currentUser && (currentUser.role === "supply_officer" || currentUser.role === "admin");
+}
+
+function applyUserRoleUI() {
+  const isAuth = !!currentUser;
+  const userPill = document.getElementById("userProfileMenuContainer");
+  const loginBtn = document.getElementById("btnOpenLoginModal");
+  if (userPill) userPill.style.display = isAuth ? "" : "none";
+  if (loginBtn) loginBtn.style.display = isAuth ? "none" : "";
+
+  if (!currentUser) {
+    document.querySelectorAll(".supply-only").forEach(el => el.style.display = "none");
+    const staffBanner = document.getElementById("staffModeIndicator");
+    if (staffBanner) staffBanner.style.display = "none";
+    const saveBtnText = document.getElementById("saveBtnText");
+    if (saveBtnText) saveBtnText.textContent = "เข้าสู่ระบบเพื่อเริ่มใช้งาน";
+    return;
+  }
+
+  const role = currentUser.role || "staff";
+  const name = currentUser.fullName || currentUser.username;
+
+  // 1. Top Navbar User Pill
+  const topUserName = document.getElementById("topUserName");
+  const topUserRoleBadge = document.getElementById("topUserRoleBadge");
+  if (topUserName) topUserName.textContent = name.split(" ")[0] || name;
+
+  if (topUserRoleBadge) {
+    topUserRoleBadge.className = "user-role-badge";
+    if (role === "supply_officer") {
+      topUserRoleBadge.textContent = "จนท.พัสดุ";
+      topUserRoleBadge.classList.add("badge-supply");
+    } else if (role === "admin") {
+      topUserRoleBadge.textContent = "ผู้ดูแลระบบ";
+      topUserRoleBadge.classList.add("badge-admin");
+    } else {
+      topUserRoleBadge.textContent = "เจ้าหน้าที่เบิก";
+      topUserRoleBadge.classList.add("badge-staff");
+    }
+  }
+
+  // 2. Dropdown Header
+  const dropName = document.getElementById("dropdownUserFullName");
+  const dropRole = document.getElementById("dropdownUserRole");
+  const dropDept = document.getElementById("dropdownUserDept");
+  if (dropName) dropName.textContent = currentUser.fullName || currentUser.username;
+  if (dropRole) {
+    if (role === "supply_officer") dropRole.textContent = "เจ้าหน้าที่พัสดุ (คีย์จ่าย / ตัดสต็อก)";
+    else if (role === "admin") dropRole.textContent = "ผู้ดูแลระบบ (Admin)";
+    else dropRole.textContent = "เจ้าหน้าที่ทั่วไป (ผู้ขอเบิก)";
+  }
+  if (dropDept) dropDept.textContent = currentUser.department || "ศาลแขวงอุบลราชธานี";
+
+  // 3. ปรับการแสดงผลปุ่มเฉพาะเจ้าหน้าที่พัสดุ (.supply-only)
+  const isSupply = isSupplyUser();
+  document.querySelectorAll(".supply-only").forEach(el => {
+    el.style.display = isSupply ? "" : "none";
+  });
+
+  // 4. Role Indicator Banner
+  const staffBanner = document.getElementById("staffModeIndicator");
+  if (staffBanner) {
+    staffBanner.style.display = (!isSupply && !pendingDispenseDocNo) ? "flex" : "none";
+  }
+
+  // 5. ปรับปุ่มบันทึกและข้อความ
+  const saveBtnText = document.getElementById("saveBtnText");
+  const saveBtnIcon = document.getElementById("saveBtnIcon");
+  if (saveBtnText && saveBtnIcon) {
+    if (pendingDispenseDocNo) {
+      saveBtnText.textContent = "ยืนยันจ่ายพัสดุ (ตัดสต็อก)";
+      saveBtnIcon.className = "fa-solid fa-boxes-packing";
+    } else if (isSupply) {
+      saveBtnText.textContent = "บันทึกจ่ายพัสดุ (ตัดสต็อก)";
+      saveBtnIcon.className = "fa-solid fa-cloud-arrow-up";
+    } else {
+      saveBtnText.textContent = "ส่งคำขอเบิกพัสดุ";
+      saveBtnIcon.className = "fa-solid fa-paper-plane";
+    }
+  }
+
+  // 6. Autofill ข้อมูลในเอกสาร
+  if (role === "staff") {
+    // เจ้าหน้าที่ขอเบิก: ใส่ชื่อตนเองในช่องผู้ขอเบิก
+    if (!pendingDispenseDocNo) {
+      const reqInput = document.getElementById("requesterName");
+      const deptInput = document.getElementById("department");
+      const sig1 = document.getElementById("sigName1");
+      const pos1 = document.getElementById("sigPos1");
+
+      if (reqInput && currentUser.fullName) reqInput.value = currentUser.fullName;
+      if (deptInput && currentUser.department) deptInput.value = currentUser.department;
+      if (sig1 && currentUser.fullName) sig1.value = currentUser.fullName;
+      if (pos1 && currentUser.position) pos1.value = currentUser.position;
+    }
+  } else if (isSupply) {
+    // เจ้าหน้าที่พัสดุ: ใส่ชื่อตนเองในช่องผู้จ่าย/เจ้าหน้าที่พัสดุ
+    const sig3 = document.getElementById("sigName3");
+    const pos3 = document.getElementById("sigPos3");
+    if (sig3 && currentUser.fullName) sig3.value = currentUser.fullName;
+    if (pos3 && currentUser.position) pos3.value = currentUser.position;
+  }
+
+  updatePendingBadgeCount();
+}
+
 // ================= INITIALIZATION =================
 document.addEventListener("DOMContentLoaded", () => {
+  loadCurrentUser();
   initDateAndDocNo();
-  renderAllTables();
-  initEventListeners();
   loadSavedHeader();
   loadHistoryFromStorage();
+  applyUserRoleUI();
+  renderAllTables();
+  initEventListeners();
+  initAuthEventListeners();
+
+  // ดึงข้อมูลสถานะล่าสุดจากชีต
+  syncWithBackend();
 });
 
 function initDateAndDocNo() {
@@ -199,7 +346,7 @@ function initDateAndDocNo() {
   const yStr = now.getFullYear();
   const mStr = ("0" + (now.getMonth() + 1)).slice(-2);
   const docNoInput = document.getElementById("docNo");
-  if (docNoInput) {
+  if (docNoInput && (!docNoInput.value || docNoInput.value.includes("REQ-"))) {
     docNoInput.value = `REQ-${yStr}${mStr}-0001`;
   }
 }
@@ -221,6 +368,8 @@ function renderColumnTbody(tbodyId, items) {
   const tbody = document.getElementById(tbodyId);
   if (!tbody) return;
 
+  const isStaff = isStaffUser();
+
   tbody.innerHTML = items.map(item => {
     const data = requisitionData[item.id] || { req: "", disp: "" };
     const hasQty = (data.req !== "" && Number(data.req) > 0) || (data.disp !== "" && Number(data.disp) > 0);
@@ -236,17 +385,21 @@ function renderColumnTbody(tbodyId, items) {
                  min="0" 
                  step="1" 
                  value="${data.req}" 
+                 placeholder="-"
                  oninput="handleReqQtyChange(${item.id}, this.value)"
                  onchange="handleReqQtyChange(${item.id}, this.value)">
         </td>
         <td class="td-unit">${escapeHtml(item.unit)}</td>
         <td class="col-head-disp">
           <input type="number" 
-                 class="cell-num-input input-disp" 
+                 class="cell-num-input input-disp ${isStaff ? 'is-disabled' : ''}" 
                  min="0" 
                  step="1" 
                  value="${data.disp}" 
-                 oninput="handleDispQtyChange(${item.id}, this.value)">
+                 placeholder="-"
+                 ${isStaff ? 'disabled title="เฉพาะเจ้าหน้าที่พัสดุเท่านั้นที่คีย์จ่ายได้"' : 'title="จำนวนที่จ่ายจริง"'} 
+                 oninput="handleDispQtyChange(${item.id}, this.value)"
+                 onchange="handleDispQtyChange(${item.id}, this.value)">
         </td>
       </tr>
     `;
@@ -262,18 +415,26 @@ function handleReqQtyChange(itemId, value) {
   }
   requisitionData[itemId].req = numVal;
 
-  // หากยังไม่เคยกำหนดจำนวนจ่าย ให้ตั้งจำนวนจ่ายเท่ากับจำนวนเบิกอัตโนมัติ
   const row = document.getElementById(`row-item-${itemId}`);
-  if (row) {
-    const dispInput = row.querySelector(".input-disp");
-    if (dispInput && (dispInput.value === "" || dispInput.value === "0")) {
-      dispInput.value = numVal;
-      requisitionData[itemId].disp = numVal;
-    }
 
-    if (numVal > 0) {
+  // หากเป็นเจ้าหน้าที่พัสดุ และยังไม่เคยใส่จำนวนจ่าย ให้ sync จำนวนจ่ายตามจำนวนเบิก
+  if (isSupplyUser()) {
+    if (row) {
+      const dispInput = row.querySelector(".input-disp");
+      if (dispInput && (dispInput.value === "" || dispInput.value === "0")) {
+        dispInput.value = numVal;
+        requisitionData[itemId].disp = numVal;
+      }
+    }
+  } else {
+    // เจ้าหน้าที่เบิกทั่วไป: ล็อคจำนวนจ่ายเป็น 0 หรือว่าง
+    requisitionData[itemId].disp = 0;
+  }
+
+  if (row) {
+    if (numVal > 0 || (requisitionData[itemId].disp !== "" && requisitionData[itemId].disp > 0)) {
       row.classList.add("has-qty");
-    } else if (requisitionData[itemId].disp === "" || requisitionData[itemId].disp === 0) {
+    } else {
       row.classList.remove("has-qty");
     }
   }
@@ -282,6 +443,11 @@ function handleReqQtyChange(itemId, value) {
 }
 
 function handleDispQtyChange(itemId, value) {
+  if (isStaffUser()) {
+    showToast("เฉพาะเจ้าหน้าที่พัสดุเท่านั้นที่สามารถคีย์จำนวนจ่ายได้", "warning");
+    return;
+  }
+
   const numVal = value === "" ? "" : Math.max(0, parseInt(value, 10) || 0);
 
   if (!requisitionData[itemId]) {
@@ -323,25 +489,32 @@ function updateTotals() {
   document.getElementById("sumDispTop").textContent = sumDisp.toLocaleString();
 }
 
-// ================= TOOLBAR ACTIONS =================
+// ================= TOOLBAR & ACTION EVENTS =================
 function initEventListeners() {
-  // 1. Quick Action: จ่าย = เบิก
-  document.getElementById("btnQuickCopyQty").addEventListener("click", () => {
-    let count = 0;
-    for (let id in requisitionData) {
-      const itm = requisitionData[id];
-      if (itm.req !== "" && itm.req > 0) {
-        itm.disp = itm.req;
-        const row = document.getElementById(`row-item-${id}`);
-        if (row) {
-          row.querySelector(".input-disp").value = itm.req;
-        }
-        count++;
+  // 1. Quick Action: จ่าย = เบิก (เฉพาะเจ้าหน้าที่พัสดุ)
+  const btnQuickCopy = document.getElementById("btnQuickCopyQty");
+  if (btnQuickCopy) {
+    btnQuickCopy.addEventListener("click", () => {
+      if (isStaffUser()) {
+        showToast("ฟังก์ชันนี้สงวนไว้สำหรับเจ้าหน้าที่พัสดุเท่านั้น", "warning");
+        return;
       }
-    }
-    updateTotals();
-    showToast(`คัดลอกจำนวนจ่าย = เบิก เรียบร้อย (${count} รายการ)`, "success");
-  });
+      let count = 0;
+      for (let id in requisitionData) {
+        const itm = requisitionData[id];
+        if (itm.req !== "" && itm.req > 0) {
+          itm.disp = itm.req;
+          const row = document.getElementById(`row-item-${id}`);
+          if (row) {
+            row.querySelector(".input-disp").value = itm.req;
+          }
+          count++;
+        }
+      }
+      updateTotals();
+      showToast(`คัดลอกจำนวนจ่าย = เบิก เรียบร้อย (${count} รายการ)`, "success");
+    });
+  }
 
   // 2. Filter: เฉพาะที่เบิก / แสดงทั้งหมด
   document.getElementById("btnFilterSelected").addEventListener("click", () => {
@@ -391,7 +564,6 @@ function initEventListeners() {
       }
     });
 
-    // เลื่อนไปยังแถวแรกที่เจอ
     if (query) {
       const firstMatch = document.querySelector(".grid-table tbody tr.search-match");
       if (firstMatch) {
@@ -406,16 +578,28 @@ function initEventListeners() {
   });
 
   // 6. Save to Google Sheets
-  document.getElementById("btnSaveToSheets").addEventListener("click", handleSaveToGoogleSheets);
+  document.getElementById("btnSaveToSheets").addEventListener("click", handleSaveRequisition);
 
-  // 7. Modals
+  // 7. ยกเลิกการจ่ายพัสดุสำหรับใบเบิกค้าง
+  const btnCancelDispense = document.getElementById("btnCancelDispense");
+  if (btnCancelDispense) {
+    btnCancelDispense.addEventListener("click", cancelPendingDispense);
+  }
+
+  // 8. ประวัติใบเบิก
   const historyModal = document.getElementById("historyModal");
   document.getElementById("btnOpenHistory").addEventListener("click", () => {
     renderHistoryModal();
     historyModal.classList.add("open");
   });
   document.getElementById("btnCloseHistory").addEventListener("click", () => historyModal.classList.remove("open"));
+  document.getElementById("btnRefreshHistoryModal").addEventListener("click", () => {
+    syncWithBackend();
+    renderHistoryModal();
+    showToast("รีเฟรชข้อมูลประวัติแล้ว", "info");
+  });
 
+  // 9. ตั้งค่าการเชื่อมต่อ Google Sheets
   const settingsModal = document.getElementById("settingsModal");
   document.getElementById("btnOpenSettings").addEventListener("click", () => {
     document.getElementById("settingWebAppUrl").value = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
@@ -427,6 +611,7 @@ function initEventListeners() {
     localStorage.setItem(STORAGE_KEYS.WEB_APP_URL, url);
     settingsModal.classList.remove("open");
     showToast("บันทึกการตั้งค่าแล้ว", "success");
+    syncWithBackend();
   });
   document.getElementById("btnTestConnection").addEventListener("click", testConnection);
 
@@ -436,10 +621,556 @@ function initEventListeners() {
   });
 }
 
+// ================= AUTH & USER MANAGEMENT EVENTS =================
+function initAuthEventListeners() {
+  // 1. User Profile Menu Dropdown Toggle
+  const btnUserToggle = document.getElementById("btnUserProfileMenuToggle");
+  const userDropdown = document.getElementById("userDropdownMenu");
+  if (btnUserToggle && userDropdown) {
+    btnUserToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      userDropdown.classList.toggle("open");
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!userDropdown.contains(e.target) && !btnUserToggle.contains(e.target)) {
+        userDropdown.classList.remove("open");
+      }
+    });
+  }
+
+  // 2. Login Modal
+  const loginModal = document.getElementById("loginModal");
+  const btnOpenLogin = document.getElementById("btnOpenLoginModal");
+  const btnCloseLogin = document.getElementById("btnCloseLogin");
+  if (btnOpenLogin) btnOpenLogin.addEventListener("click", () => loginModal.classList.add("open"));
+  if (btnCloseLogin) btnCloseLogin.addEventListener("click", () => loginModal.classList.remove("open"));
+
+  // Quick Login Test Pills
+  document.getElementById("btnQuickLoginSupply").addEventListener("click", () => {
+    document.getElementById("loginUsername").value = "admin";
+    document.getElementById("loginPassword").value = "1234";
+    submitLogin();
+  });
+  document.getElementById("btnQuickLoginStaff").addEventListener("click", () => {
+    document.getElementById("loginUsername").value = "wit";
+    document.getElementById("loginPassword").value = "1234";
+    submitLogin();
+  });
+  document.getElementById("btnSubmitLogin").addEventListener("click", submitLogin);
+
+  // Switch between Login & Register
+  document.getElementById("linkSwitchToRegister").addEventListener("click", () => {
+    loginModal.classList.remove("open");
+    document.getElementById("registerModal").classList.add("open");
+  });
+  document.getElementById("linkSwitchToLogin").addEventListener("click", () => {
+    document.getElementById("registerModal").classList.remove("open");
+    loginModal.classList.add("open");
+  });
+
+  // 3. Register Modal
+  const registerModal = document.getElementById("registerModal");
+  document.getElementById("btnCloseRegister").addEventListener("click", () => registerModal.classList.remove("open"));
+  document.getElementById("btnSubmitRegister").addEventListener("click", submitRegister);
+
+  // 4. Profile Modal
+  const profileModal = document.getElementById("profileModal");
+  document.getElementById("menuItemProfile").addEventListener("click", () => {
+    userDropdown.classList.remove("open");
+    openProfileModal();
+  });
+  document.getElementById("btnCloseProfile").addEventListener("click", () => profileModal.classList.remove("open"));
+  document.getElementById("btnCancelProfile").addEventListener("click", () => profileModal.classList.remove("open"));
+  document.getElementById("btnSaveProfile").addEventListener("click", submitProfileUpdate);
+
+  // 5. Switch User & Logout
+  const menuItemSwitch = document.getElementById("menuItemSwitchUser");
+  if (menuItemSwitch) {
+    menuItemSwitch.addEventListener("click", () => {
+      userDropdown.classList.remove("open");
+      document.getElementById("loginModal").classList.add("open");
+    });
+  }
+
+  document.getElementById("menuItemLogout").addEventListener("click", () => {
+    userDropdown.classList.remove("open");
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    currentUser = null;
+    applyUserRoleUI();
+    renderAllTables();
+    document.getElementById("loginModal").classList.add("open");
+    showToast("ออกจากระบบเรียบร้อยแล้ว กรุณาเข้าสู่ระบบ", "info");
+  });
+
+  // 6. Pending Queue Modal
+  const pendingModal = document.getElementById("pendingModal");
+  const btnOpenPending = document.getElementById("btnOpenPending");
+  const menuItemPending = document.getElementById("menuItemPendingDropdown");
+  const openPendingFunc = () => {
+    if (userDropdown) userDropdown.classList.remove("open");
+    renderPendingTable();
+    pendingModal.classList.add("open");
+  };
+  if (btnOpenPending) btnOpenPending.addEventListener("click", openPendingFunc);
+  if (menuItemPending) menuItemPending.addEventListener("click", openPendingFunc);
+  document.getElementById("btnClosePending").addEventListener("click", () => pendingModal.classList.remove("open"));
+  document.getElementById("btnRefreshPending").addEventListener("click", () => {
+    syncWithBackend();
+    renderPendingTable();
+    showToast("รีเฟรชรายการรอจ่ายแล้ว", "info");
+  });
+
+  // 7. Members Management Modal
+  const membersModal = document.getElementById("membersModal");
+  const btnOpenMembers = document.getElementById("btnOpenMembers");
+  const menuItemMembers = document.getElementById("menuItemMembersDropdown");
+  const openMembersFunc = () => {
+    if (userDropdown) userDropdown.classList.remove("open");
+    loadMembersData();
+    membersModal.classList.add("open");
+  };
+  if (btnOpenMembers) btnOpenMembers.addEventListener("click", openMembersFunc);
+  if (menuItemMembers) menuItemMembers.addEventListener("click", openMembersFunc);
+  document.getElementById("btnCloseMembers").addEventListener("click", () => membersModal.classList.remove("open"));
+  document.getElementById("btnRefreshMembers").addEventListener("click", () => {
+    loadMembersData();
+    showToast("รีเฟรชรายชื่อสมาชิกแล้ว", "info");
+  });
+}
+
+// ================= AUTHENTICATION ACTIONS =================
+async function submitLogin() {
+  const username = document.getElementById("loginUsername").value.trim();
+  const password = document.getElementById("loginPassword").value.trim();
+
+  if (!username || !password) {
+    showToast("กรุณากรอกชื่อผู้ใช้และรหัสผ่าน", "warning");
+    return;
+  }
+
+  showToast("กำลังตรวจสอบข้อมูลเข้าสู่ระบบ...", "info");
+
+  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+
+  try {
+    const res = await fetch(webAppUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "login",
+        data: { username, password }
+      })
+    });
+    const result = await res.json();
+
+    if (result.status === "success" && result.user) {
+      currentUser = result.user;
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
+      document.getElementById("loginModal").classList.remove("open");
+      applyUserRoleUI();
+      renderAllTables();
+      showToast(`ยินดีต้อนรับ ${currentUser.fullName} (${currentUser.role === 'supply_officer' ? 'เจ้าหน้าที่พัสดุ' : 'เจ้าหน้าที่ขอเบิก'})`, "success");
+      return;
+    } else {
+      showToast(result.message || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง", "error");
+    }
+  } catch (err) {
+    // โหมดออฟไลน์ fallback หากเน็ตขัดข้อง
+    if ((username === "admin" && password === "1234") || (username === "wit" && password === "1234")) {
+      currentUser = {
+        id: username === "admin" ? "USR-0001" : "USR-0002",
+        username: username,
+        fullName: username === "admin" ? "นางสาวชัญญาพัชร์ โสภา" : "นายวิทย์ ภูภักดี",
+        position: username === "admin" ? "นักวิชาการพัสดุชำนาญการ" : "นักวิชาการคอมพิวเตอร์ปฏิบัติการ",
+        department: username === "admin" ? "กลุ่มงานพัสดุและอาคารสถานที่" : "กลุ่มงานเทคโนโลยีสารสนเทศ",
+        role: username === "admin" ? "supply_officer" : "staff",
+        status: "อนุมัติแล้ว"
+      };
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
+      document.getElementById("loginModal").classList.remove("open");
+      applyUserRoleUI();
+      renderAllTables();
+      showToast(`เข้าสู่ระบบสำเร็จ (ออฟไลน์): ${currentUser.fullName}`, "success");
+    } else {
+      showToast("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง", "error");
+    }
+  }
+}
+
+async function submitRegister() {
+  const username = document.getElementById("regUsername").value.trim();
+  const role = document.getElementById("regRole").value;
+  const password = document.getElementById("regPassword").value.trim();
+  const confirmPassword = document.getElementById("regConfirmPassword").value.trim();
+  const fullName = document.getElementById("regFullName").value.trim();
+  const position = document.getElementById("regPosition").value.trim();
+  const department = document.getElementById("regDepartment").value.trim() || "ศาลแขวงอุบลราชธานี";
+
+  if (!username || !password || !fullName) {
+    showToast("กรุณากรอกข้อมูลที่จำเป็น (*) ให้ครบถ้วน", "warning");
+    return;
+  }
+
+  if (password.length < 4) {
+    showToast("รหัสผ่านต้องมีความยาวอย่างน้อย 4 ตัวอักษร", "warning");
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    showToast("รหัสผ่านและการยืนยันรหัสผ่านไม่ตรงกัน", "warning");
+    return;
+  }
+
+  showToast("กำลังลงทะเบียนสมาชิกใหม่...", "info");
+
+  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+
+  try {
+    const res = await fetch(webAppUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "register",
+        data: { username, password, fullName, position, department, role }
+      })
+    });
+    const result = await res.json();
+
+    if (result.status === "success" && result.user) {
+      currentUser = result.user;
+      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
+      document.getElementById("registerModal").classList.remove("open");
+      applyUserRoleUI();
+      renderAllTables();
+      showToast("ลงทะเบียนสำเร็จและเข้าสู่ระบบเรียบร้อย!", "success");
+    } else {
+      showToast(result.message || "เกิดข้อผิดพลาดในการลงทะเบียน", "error");
+    }
+  } catch (err) {
+    // Offline local register
+    currentUser = {
+      id: "USR-" + Date.now().toString().slice(-4),
+      username,
+      fullName,
+      position,
+      department,
+      role,
+      status: "อนุมัติแล้ว"
+    };
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
+    document.getElementById("registerModal").classList.remove("open");
+    applyUserRoleUI();
+    renderAllTables();
+    showToast("ลงทะเบียนและเข้าสู่ระบบเรียบร้อย (ออฟไลน์)", "success");
+  }
+}
+
+function openProfileModal() {
+  if (!currentUser) return;
+  document.getElementById("profileDisplayUsername").textContent = currentUser.username;
+  const roleDisplay = document.getElementById("profileDisplayRole");
+  if (roleDisplay) {
+    roleDisplay.textContent = currentUser.role === "supply_officer" ? "เจ้าหน้าที่พัสดุ" : (currentUser.role === "admin" ? "ผู้ดูแลระบบ" : "เจ้าหน้าที่ขอเบิก");
+  }
+  document.getElementById("profileFullName").value = currentUser.fullName || "";
+  document.getElementById("profilePosition").value = currentUser.position || "";
+  document.getElementById("profileDepartment").value = currentUser.department || "ศาลแขวงอุบลราชธานี";
+  document.getElementById("profileNewPassword").value = "";
+  document.getElementById("profileModal").classList.add("open");
+}
+
+async function submitProfileUpdate() {
+  if (!currentUser) return;
+
+  const fullName = document.getElementById("profileFullName").value.trim();
+  const position = document.getElementById("profilePosition").value.trim();
+  const department = document.getElementById("profileDepartment").value.trim();
+  const newPassword = document.getElementById("profileNewPassword").value.trim();
+
+  if (!fullName) {
+    showToast("กรุณากรอกชื่อ - นามสกุล", "warning");
+    return;
+  }
+
+  showToast("กำลังอัปเดตโปรไฟล์...", "info");
+
+  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+
+  try {
+    const res = await fetch(webAppUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "updateProfile",
+        data: {
+          username: currentUser.username,
+          fullName,
+          position,
+          department,
+          newPassword: newPassword || undefined
+        }
+      })
+    });
+    const result = await res.json();
+    if (result.status === "success" && result.user) {
+      currentUser = result.user;
+    } else {
+      currentUser.fullName = fullName;
+      currentUser.position = position;
+      currentUser.department = department;
+    }
+  } catch (err) {
+    currentUser.fullName = fullName;
+    currentUser.position = position;
+    currentUser.department = department;
+  }
+
+  localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
+  applyUserRoleUI();
+  document.getElementById("profileModal").classList.remove("open");
+  showToast("อัปเดตข้อมูลโปรไฟล์เรียบร้อยแล้ว", "success");
+}
+
+// ================= MEMBERS MANAGEMENT (SUPPLY / ADMIN) =================
+async function loadMembersData() {
+  const tbody = document.getElementById("membersTableTbody");
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted" style="padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> กำลังโหลดข้อมูลสมาชิก...</td></tr>`;
+
+  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+
+  try {
+    const res = await fetch(`${webAppUrl}?action=getUsers`);
+    const result = await res.json();
+    if (result.status === "success" && Array.isArray(result.data)) {
+      membersCache = result.data;
+    }
+  } catch (e) {
+    if (membersCache.length === 0) {
+      membersCache = [
+        { id: "USR-0001", username: "admin", fullName: "นางสาวชัญญาพัชร์ โสภา", position: "นักวิชาการพัสดุชำนาญการ", department: "กลุ่มงานพัสดุและอาคารสถานที่", role: "supply_officer", status: "อนุมัติแล้ว" },
+        { id: "USR-0002", username: "wit", fullName: "นายวิทย์ ภูภักดี", position: "นักวิชาการคอมพิวเตอร์ปฏิบัติการ", department: "กลุ่มงานเทคโนโลยีสารสนเทศ", role: "staff", status: "อนุมัติแล้ว" },
+        { id: "USR-0003", username: "director", fullName: "นางสุภาภรณ์ สุดามาตร", position: "นักวิชาการเงินและบัญชีชำนาญการพิเศษ", department: "กลุ่มงานการเงินและบัญชี", role: "approver", status: "อนุมัติแล้ว" }
+      ];
+    }
+  }
+
+  renderMembersTable();
+}
+
+function renderMembersTable() {
+  const tbody = document.getElementById("membersTableTbody");
+  if (!tbody) return;
+
+  const query = (document.getElementById("searchMembersInput").value || "").toLowerCase().trim();
+  const filtered = membersCache.filter(u => {
+    if (!query) return true;
+    return (u.username || "").toLowerCase().includes(query) ||
+           (u.fullName || "").toLowerCase().includes(query) ||
+           (u.department || "").toLowerCase().includes(query) ||
+           (u.position || "").toLowerCase().includes(query);
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted" style="padding: 20px;">ไม่พบข้อมูลสมาชิก</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map((u, idx) => `
+    <tr>
+      <td class="font-mono">${escapeHtml(u.id)}</td>
+      <td><strong>${escapeHtml(u.username)}</strong></td>
+      <td>${escapeHtml(u.fullName)}</td>
+      <td>${escapeHtml(u.position || "-")} / <span class="text-muted">${escapeHtml(u.department || "-")}</span></td>
+      <td>
+        <select class="form-control" style="padding: 3px 6px; font-size: 11.5px;" onchange="updateMemberRole('${escapeHtml(u.id)}', this.value)">
+          <option value="staff" ${u.role === 'staff' ? 'selected' : ''}>เจ้าหน้าที่เบิก</option>
+          <option value="supply_officer" ${u.role === 'supply_officer' ? 'selected' : ''}>จนท.พัสดุ (จ่าย)</option>
+          <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>ผู้ดูแลระบบ</option>
+        </select>
+      </td>
+      <td>
+        <span class="badge-status ${u.status === 'ระงับการใช้งาน' ? 'pending' : 'completed'}">
+          ${escapeHtml(u.status || 'อนุมัติแล้ว')}
+        </span>
+      </td>
+      <td class="text-center">
+        <button type="button" class="btn btn-outline btn-sm text-danger" title="ลบสมาชิก" onclick="deleteMember('${escapeHtml(u.id)}', '${escapeHtml(u.username)}')">
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+async function updateMemberRole(userId, newRole) {
+  showToast("กำลังอัปเดตสิทธิ์...", "info");
+  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+
+  try {
+    await fetch(webAppUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "updateUserRole",
+        data: { id: userId, role: newRole }
+      })
+    });
+  } catch (e) {}
+
+  const mem = membersCache.find(m => m.id === userId);
+  if (mem) mem.role = newRole;
+  showToast("อัปเดตสิทธิ์สมาชิกเรียบร้อยแล้ว", "success");
+}
+
+async function deleteMember(userId, username) {
+  if (currentUser && currentUser.id === userId) {
+    showToast("ไม่สามารถลบบัญชีของตนเองที่กำลังล็อกอินอยู่ได้", "warning");
+    return;
+  }
+
+  if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบสมาชิก "${username}" ออกจากระบบ?`)) return;
+
+  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+  try {
+    await fetch(webAppUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "deleteUser",
+        data: { id: userId }
+      })
+    });
+  } catch (e) {}
+
+  membersCache = membersCache.filter(m => m.id !== userId);
+  renderMembersTable();
+  showToast(`ลบสมาชิก "${username}" เรียบร้อยแล้ว`, "success");
+}
+
+// ================= PENDING REQUISITIONS QUEUE (FOR SUPPLY OFFICER) =================
+function updatePendingBadgeCount() {
+  const pendingItems = historyCache.filter(r => r.status === "รอจ่ายพัสดุ");
+  const count = pendingItems.length;
+
+  const toolbarBadge = document.getElementById("pendingToolbarBadge");
+  const dropdownBadge = document.getElementById("pendingDropdownCount");
+  if (toolbarBadge) toolbarBadge.textContent = count;
+  if (dropdownBadge) dropdownBadge.textContent = count;
+}
+
+function renderPendingTable() {
+  const tbody = document.getElementById("pendingTableTbody");
+  if (!tbody) return;
+
+  const query = (document.getElementById("searchPendingInput").value || "").toLowerCase().trim();
+  const pendingItems = historyCache.filter(r => {
+    const isPending = r.status === "รอจ่ายพัสดุ";
+    if (!isPending) return false;
+    if (!query) return true;
+    return (r.docNo || "").toLowerCase().includes(query) ||
+           (r.requester || "").toLowerCase().includes(query) ||
+           (r.department || "").toLowerCase().includes(query);
+  });
+
+  if (pendingItems.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted" style="padding: 24px;">ไม่มีรายการคำขอเบิกที่ค้างจ่ายในขณะนี้</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = pendingItems.map((req, idx) => `
+    <tr>
+      <td class="font-mono font-bold">${escapeHtml(req.docNo)}</td>
+      <td>${escapeHtml(req.date)}</td>
+      <td>${escapeHtml(req.requester)}</td>
+      <td>${escapeHtml(req.department)}</td>
+      <td class="text-center">${req.itemCount}</td>
+      <td class="text-center font-bold text-primary">${req.totalRequested}</td>
+      <td class="text-center"><span class="badge-status pending">รอจ่ายพัสดุ</span></td>
+      <td class="text-center">
+        <button type="button" class="btn btn-warning btn-sm" onclick="openRequisitionForDispense('${escapeHtml(req.docNo)}')">
+          <i class="fa-solid fa-boxes-packing"></i> เปิดเพื่อจ่าย
+        </button>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function openRequisitionForDispense(docNo) {
+  const req = historyCache.find(r => r.docNo === docNo);
+  if (!req) return;
+
+  pendingDispenseDocNo = req.docNo;
+
+  // โหลดข้อมูลลงหน้าจอหลัก
+  document.getElementById("docNo").value = req.docNo;
+  document.getElementById("docDate").value = req.date;
+  if (req.org) document.getElementById("docOrg").value = req.org;
+  document.getElementById("requesterName").value = req.requester || "";
+  document.getElementById("department").value = req.department || "";
+  document.getElementById("sigName1").value = req.requester || "";
+
+  // ลายเซ็นผู้จ่ายเป็นของเจ้าหน้าที่พัสดุที่ล็อกอินอยู่
+  if (currentUser) {
+    document.getElementById("sigName3").value = currentUser.fullName;
+    document.getElementById("sigPos3").value = currentUser.position;
+  }
+
+  // โหลดรายการที่เบิก และตั้งค่าจำนวนจ่าย = จำนวนเบิก เป็นค่าเริ่มต้นให้พัสดุตรวจและแก้ไข
+  requisitionData = {};
+  if (req.allQuantities && Object.keys(req.allQuantities).length > 0) {
+    for (let id in req.allQuantities) {
+      const q = req.allQuantities[id];
+      requisitionData[id] = {
+        req: q.req || 0,
+        disp: (q.disp !== undefined && q.disp !== 0) ? q.disp : (q.req || 0)
+      };
+    }
+  } else if (req.items && req.items.length > 0) {
+    req.items.forEach(itm => {
+      requisitionData[itm.id] = {
+        req: itm.requestedQty || 0,
+        disp: itm.dispensedQty || itm.requestedQty || 0
+      };
+    });
+  }
+
+  // แสดง Banner กำลังจ่ายพัสดุ
+  const banner = document.getElementById("pendingDispenseBanner");
+  if (banner) {
+    document.getElementById("bannerDocNo").textContent = req.docNo;
+    document.getElementById("bannerRequester").textContent = req.requester;
+    banner.style.display = "flex";
+  }
+
+  document.getElementById("pendingModal").classList.remove("open");
+
+  applyUserRoleUI();
+  renderAllTables();
+
+  showToast(`โหลดใบเบิก ${req.docNo} เรียบร้อยแล้ว กรุณาตรวจสอบจำนวนที่จ่ายจริง`, "success");
+}
+
+function cancelPendingDispense() {
+  if (confirm("ต้องการยกเลิกการจ่ายพัสดุสำหรับใบเบิกนี้ และกลับสู่โหมดปกติใช่หรือไม่?")) {
+    pendingDispenseDocNo = null;
+    const banner = document.getElementById("pendingDispenseBanner");
+    if (banner) banner.style.display = "none";
+
+    requisitionData = {};
+    initDateAndDocNo();
+    applyUserRoleUI();
+    renderAllTables();
+    showToast("กลับสู่โหมดสร้างใบเบิกปกติแล้ว", "info");
+  }
+}
+
 // ================= SAVE TO GOOGLE SHEETS =================
-async function handleSaveToGoogleSheets() {
+async function handleSaveRequisition() {
   saveHeaderToStorage();
 
+  const isStaff = isStaffUser();
   const selectedItems = [];
   let totalReq = 0;
   let totalDisp = 0;
@@ -447,7 +1178,9 @@ async function handleSaveToGoogleSheets() {
   for (let id in requisitionData) {
     const itm = requisitionData[id];
     const r = parseInt(itm.req, 10) || 0;
-    const d = parseInt(itm.disp, 10) || 0;
+    // หากเป็น staff จะไม่ส่งยอดจ่าย (disp = 0)
+    const d = isStaff ? 0 : (parseInt(itm.disp, 10) || 0);
+
     if (r > 0 || d > 0) {
       const baseItem = ITEMS_DATABASE.find(i => i.id == id);
       selectedItems.push({
@@ -467,28 +1200,80 @@ async function handleSaveToGoogleSheets() {
     return;
   }
 
-  const payload = {
-    docNo: document.getElementById("docNo").value.trim(),
-    date: document.getElementById("docDate").value.trim(),
-    org: document.getElementById("docOrg").value.trim(),
-    requester: document.getElementById("requesterName").value.trim(),
-    department: document.getElementById("department").value.trim(),
-    approver: document.getElementById("sigName2").value.trim(),
-    dispenser: document.getElementById("sigName3").value.trim(),
-    itemCount: selectedItems.length,
-    totalRequested: totalReq,
-    totalDispensed: totalDisp,
-    items: selectedItems,
-    allQuantities: requisitionData // เก็บ snapshot ทั้งหมดสำหรับโหลดพิมพ์ซ้ำ
-  };
-
+  const docNo = document.getElementById("docNo").value.trim();
+  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
   const btn = document.getElementById("btnSaveToSheets");
   btn.disabled = true;
   btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> บันทึก...`;
 
-  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
-
   try {
+    // -------------------------------------------------------------
+    // กรณีที่ 1: เจ้าหน้าที่พัสดุกำลังจ่ายพัสดุสำหรับใบเบิกที่รอจ่าย (Dispense Action)
+    // -------------------------------------------------------------
+    if (pendingDispenseDocNo) {
+      const dispensePayload = {
+        docNo: pendingDispenseDocNo,
+        dispenser: currentUser ? currentUser.fullName : "เจ้าหน้าที่พัสดุ",
+        items: selectedItems
+      };
+
+      if (webAppUrl) {
+        await fetch(webAppUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "dispenseRequisition",
+            data: dispensePayload
+          })
+        });
+      }
+
+      // อัปเดตในประวัติ local cache
+      const cached = historyCache.find(r => r.docNo === pendingDispenseDocNo);
+      if (cached) {
+        cached.status = "จ่ายแล้ว";
+        cached.totalDispensed = totalDisp;
+        cached.dispenser = dispensePayload.dispenser;
+        cached.allQuantities = JSON.parse(JSON.stringify(requisitionData));
+        localStorage.setItem(STORAGE_KEYS.REQUISITIONS, JSON.stringify(historyCache));
+      }
+
+      showToast(`บันทึกการจ่ายพัสดุใบเบิก ${pendingDispenseDocNo} และตัดสต็อกเรียบร้อยแล้ว!`, "success");
+
+      // เคลียร์โหมดจ่าย
+      pendingDispenseDocNo = null;
+      const banner = document.getElementById("pendingDispenseBanner");
+      if (banner) banner.style.display = "none";
+
+      incrementDocNo();
+      requisitionData = {};
+      applyUserRoleUI();
+      renderAllTables();
+      return;
+    }
+
+    // -------------------------------------------------------------
+    // กรณีที่ 2: สร้างใบเบิกใหม่
+    // - เจ้าหน้าที่ขอเบิก: status = "รอจ่ายพัสดุ", totalDispensed = 0, ไม่ตัดสต็อก
+    // - เจ้าหน้าที่พัสดุ: status = "จ่ายแล้ว", ตัดสต็อกทันที
+    // -------------------------------------------------------------
+    const status = isStaff ? "รอจ่ายพัสดุ" : "จ่ายแล้ว";
+    const payload = {
+      docNo: docNo,
+      date: document.getElementById("docDate").value.trim(),
+      org: document.getElementById("docOrg").value.trim(),
+      requester: document.getElementById("requesterName").value.trim(),
+      department: document.getElementById("department").value.trim(),
+      approver: document.getElementById("sigName2").value.trim(),
+      dispenser: isStaff ? "" : document.getElementById("sigName3").value.trim(),
+      itemCount: selectedItems.length,
+      totalRequested: totalReq,
+      totalDispensed: isStaff ? 0 : totalDisp,
+      status: status,
+      items: selectedItems,
+      allQuantities: JSON.parse(JSON.stringify(requisitionData))
+    };
+
     if (webAppUrl) {
       await fetch(webAppUrl, {
         method: "POST",
@@ -501,19 +1286,40 @@ async function handleSaveToGoogleSheets() {
     }
 
     saveRequisitionHistory(payload);
-    showToast(`บันทึกใบเบิก ${payload.docNo} ลงฐานข้อมูลเรียบร้อยแล้ว!`, "success");
 
-    // เพิ่มเลขที่ใบเบิกถัดไปอัตโนมัติ
+    if (isStaff) {
+      showToast(`ส่งคำขอเบิกพัสดุ ${docNo} เรียบร้อยแล้ว (สถานะ: รอเจ้าหน้าที่พัสดุจ่าย)`, "success");
+    } else {
+      showToast(`บันทึกจ่ายพัสดุ ${docNo} และตัดสต็อกเรียบร้อยแล้ว!`, "success");
+    }
+
     incrementDocNo();
+    requisitionData = {};
+    renderAllTables();
 
   } catch (err) {
     console.warn("API Error, saving offline:", err);
-    saveRequisitionHistory(payload);
+    const offlinePayload = {
+      docNo: docNo,
+      date: document.getElementById("docDate").value.trim(),
+      org: document.getElementById("docOrg").value.trim(),
+      requester: document.getElementById("requesterName").value.trim(),
+      department: document.getElementById("department").value.trim(),
+      status: isStaff ? "รอจ่ายพัสดุ" : "จ่ายแล้ว",
+      itemCount: selectedItems.length,
+      totalRequested: totalReq,
+      totalDispensed: isStaff ? 0 : totalDisp,
+      items: selectedItems,
+      allQuantities: JSON.parse(JSON.stringify(requisitionData))
+    };
+    saveRequisitionHistory(offlinePayload);
     showToast(`บันทึกในเครื่องเรียบร้อย (โหมดออฟไลน์)`, "success");
     incrementDocNo();
+    requisitionData = {};
+    renderAllTables();
   } finally {
     btn.disabled = false;
-    btn.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> บันทึกชีต`;
+    applyUserRoleUI();
   }
 }
 
@@ -529,8 +1335,6 @@ function incrementDocNo() {
 }
 
 // ================= HISTORY MANAGEMENT =================
-let historyCache = [];
-
 function loadHistoryFromStorage() {
   try {
     historyCache = JSON.parse(localStorage.getItem(STORAGE_KEYS.REQUISITIONS) || "[]");
@@ -540,20 +1344,34 @@ function loadHistoryFromStorage() {
 }
 
 function saveRequisitionHistory(payload) {
-  historyCache.unshift(payload);
+  const existingIdx = historyCache.findIndex(r => r.docNo === payload.docNo);
+  if (existingIdx >= 0) {
+    historyCache[existingIdx] = payload;
+  } else {
+    historyCache.unshift(payload);
+  }
   localStorage.setItem(STORAGE_KEYS.REQUISITIONS, JSON.stringify(historyCache));
+  updatePendingBadgeCount();
 }
 
 function renderHistoryModal() {
   const tbody = document.getElementById("historyModalTbody");
   if (!tbody) return;
 
-  if (historyCache.length === 0) {
+  const query = (document.getElementById("searchHistoryModalInput").value || "").toLowerCase().trim();
+  const filtered = historyCache.filter(r => {
+    if (!query) return true;
+    return (r.docNo || "").toLowerCase().includes(query) ||
+           (r.requester || "").toLowerCase().includes(query) ||
+           (r.department || "").toLowerCase().includes(query);
+  });
+
+  if (filtered.length === 0) {
     tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted" style="padding: 20px;">ไม่พบประวัติการบันทึก</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = historyCache.map((req, idx) => `
+  tbody.innerHTML = filtered.map((req, idx) => `
     <tr>
       <td class="font-mono font-bold">${escapeHtml(req.docNo)}</td>
       <td>${escapeHtml(req.date)}</td>
@@ -561,9 +1379,11 @@ function renderHistoryModal() {
       <td>${escapeHtml(req.department)}</td>
       <td class="text-center">${req.itemCount}</td>
       <td class="text-center font-bold text-primary">${req.totalRequested}</td>
-      <td class="text-center font-bold text-success">${req.totalDispensed}</td>
+      <td class="text-center font-bold ${req.status === 'รอจ่ายพัสดุ' ? 'text-warning' : 'text-success'}">
+        ${req.status === 'รอจ่ายพัสดุ' ? '<span class="badge-status pending">รอจ่าย</span>' : req.totalDispensed}
+      </td>
       <td class="text-center">
-        <button type="button" class="btn btn-warning btn-sm" onclick="loadAndPrintHistory(${idx})">
+        <button type="button" class="btn btn-warning btn-sm" onclick="loadAndPrintHistory('${escapeHtml(req.docNo)}')">
           <i class="fa-solid fa-print"></i> โหลดพิมพ์
         </button>
       </td>
@@ -571,20 +1391,19 @@ function renderHistoryModal() {
   `).join("");
 }
 
-function loadAndPrintHistory(index) {
-  const req = historyCache[index];
+function loadAndPrintHistory(docNo) {
+  const req = historyCache.find(r => r.docNo === docNo);
   if (!req) return;
 
   document.getElementById("docNo").value = req.docNo || "";
   document.getElementById("docDate").value = req.date || "";
-  document.getElementById("docOrg").value = req.org || "";
+  document.getElementById("docOrg").value = req.org || "ศาลแขวงอุบลราชธานี";
   document.getElementById("requesterName").value = req.requester || "";
   document.getElementById("department").value = req.department || "";
   document.getElementById("sigName1").value = req.requester || "";
   if (req.approver) document.getElementById("sigName2").value = req.approver;
   if (req.dispenser) document.getElementById("sigName3").value = req.dispenser;
 
-  // คืนค่าจำนวนเบิก/จ่าย
   requisitionData = req.allQuantities || {};
   if (req.items && (!req.allQuantities || Object.keys(req.allQuantities).length === 0)) {
     requisitionData = {};
@@ -598,7 +1417,7 @@ function loadAndPrintHistory(index) {
   showToast(`โหลดใบเบิก ${req.docNo} เรียบร้อย สั่งพิมพ์ได้ทันที`, "success");
 }
 
-// ================= STORAGE & CONNECTION =================
+// ================= STORAGE & BACKEND SYNC =================
 function saveHeaderToStorage() {
   const headerData = {
     org: document.getElementById("docOrg").value,
@@ -619,16 +1438,47 @@ function loadSavedHeader() {
   if (!saved) return;
   try {
     const d = JSON.parse(saved);
-    if (d.org) document.getElementById("docOrg").value = d.org;
-    if (d.requester) document.getElementById("requesterName").value = d.requester;
-    if (d.dept) document.getElementById("department").value = d.dept;
-    if (d.sig1) document.getElementById("sigName1").value = d.sig1;
-    if (d.pos1) document.getElementById("sigPos1").value = d.pos1;
+    if (d.org && d.org !== "สาธารณสุขอำเภอ...") {
+      document.getElementById("docOrg").value = d.org;
+    } else {
+      document.getElementById("docOrg").value = "ศาลแขวงอุบลราชธานี";
+    }
     if (d.sig2) document.getElementById("sigName2").value = d.sig2;
     if (d.pos2) document.getElementById("sigPos2").value = d.pos2;
-    if (d.sig3) document.getElementById("sigName3").value = d.sig3;
-    if (d.pos3) document.getElementById("sigPos3").value = d.pos3;
   } catch (e) {}
+}
+
+async function syncWithBackend() {
+  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+  if (!webAppUrl) return;
+
+  try {
+    const res = await fetch(`${webAppUrl}?action=getInitData`);
+    const data = await res.json();
+    if (data.status === "success") {
+      if (data.requisitions && Array.isArray(data.requisitions)) {
+        // ผสานประวัติจาก Google Sheets เข้า historyCache
+        data.requisitions.forEach(remoteReq => {
+          const idx = historyCache.findIndex(r => r.docNo === remoteReq.docNo);
+          if (idx >= 0) {
+            historyCache[idx] = { ...historyCache[idx], ...remoteReq };
+          } else {
+            historyCache.push(remoteReq);
+          }
+        });
+        localStorage.setItem(STORAGE_KEYS.REQUISITIONS, JSON.stringify(historyCache));
+        updatePendingBadgeCount();
+      }
+      if (data.nextDocNo && !pendingDispenseDocNo) {
+        const curDocInput = document.getElementById("docNo");
+        if (curDocInput && (!curDocInput.value || curDocInput.value === "REQ-202610-0001")) {
+          curDocInput.value = data.nextDocNo;
+        }
+      }
+    }
+  } catch (e) {
+    console.log("Offline mode, using local state");
+  }
 }
 
 async function testConnection() {

@@ -39,9 +39,16 @@
       </div>
 
       <div class="toolbar-actions">
-        <button type="button" class="btn btn-outline-light btn-sm" id="btnQuickCopyQty" title="กำหนดจำนวนจ่าย = จำนวนเบิก ทั้งหมด">
+        <!-- Supply Officer Only: รายการรอจ่ายพัสดุ -->
+        <button type="button" class="btn btn-warning btn-sm supply-only" id="btnOpenPending" title="ดูรายการคำขอเบิกที่รอเจ้าหน้าที่พัสดุจ่าย" style="display: none;">
+          <i class="fa-solid fa-boxes-packing"></i> รอจ่าย <span class="badge-count" id="pendingToolbarBadge">0</span>
+        </button>
+
+        <!-- Quick Copy: เฉพาะเจ้าหน้าที่พัสดุ -->
+        <button type="button" class="btn btn-outline-light btn-sm supply-only" id="btnQuickCopyQty" title="กำหนดจำนวนจ่าย = จำนวนเบิก ทั้งหมด" style="display: none;">
           <i class="fa-solid fa-check-double"></i> จ่าย = เบิก
         </button>
+
         <button type="button" class="btn btn-outline-light btn-sm" id="btnFilterSelected" title="กรองแสดงเฉพาะรายการที่มีการเบิก">
           <i class="fa-solid fa-filter"></i> <span id="filterBtnText">เฉพาะที่เบิก</span>
         </button>
@@ -49,23 +56,92 @@
           <i class="fa-solid fa-rotate-left"></i> ล้าง
         </button>
         <button type="button" class="btn btn-primary btn-sm" id="btnSaveToSheets">
-          <i class="fa-solid fa-cloud-arrow-up"></i> บันทึกชีต
+          <i class="fa-solid fa-paper-plane" id="saveBtnIcon"></i> <span id="saveBtnText">ส่งคำขอเบิกพัสดุ</span>
         </button>
         <button type="button" class="btn btn-warning btn-sm" id="btnPrintA4">
-          <i class="fa-solid fa-print"></i> พิมพ์ A4 หน้าเดียว
+          <i class="fa-solid fa-print"></i> พิมพ์ A4
         </button>
-        <button type="button" class="btn-icon-top" id="btnOpenHistory" title="ดูประวัติใบเบิก">
+        <button type="button" class="btn-icon-top" id="btnOpenHistory" title="ประวัติใบเบิกทั้งหมด">
           <i class="fa-solid fa-clock-rotate-left"></i>
         </button>
+        
+        <!-- Supply Officer / Admin: จัดการสมาชิก -->
+        <button type="button" class="btn-icon-top supply-only" id="btnOpenMembers" title="จัดการสมาชิกและกำหนดสิทธิ์" style="display: none;">
+          <i class="fa-solid fa-users-gear"></i>
+        </button>
+
         <button type="button" class="btn-icon-top" id="btnOpenSettings" title="ตั้งค่าเชื่อมต่อ">
           <i class="fa-solid fa-gear"></i>
         </button>
+
+        <!-- User Authentication & Profile Pill -->
+        <div class="user-auth-wrapper">
+          <button type="button" class="btn btn-outline-light btn-sm" id="btnOpenLoginModal" style="display: none;">
+            <i class="fa-solid fa-right-to-bracket"></i> เข้าสู่ระบบ
+          </button>
+          
+          <div class="user-profile-menu-container" id="userProfileMenuContainer">
+            <button type="button" class="user-profile-pill" id="btnUserProfileMenuToggle">
+              <i class="fa-solid fa-circle-user user-avatar-icon"></i>
+              <div class="user-profile-info">
+                <span class="user-name-text" id="topUserName">นายวิทย์</span>
+                <span class="user-role-badge badge-staff" id="topUserRoleBadge">เจ้าหน้าที่เบิก</span>
+              </div>
+              <i class="fa-solid fa-chevron-down fa-2xs chevron-icon"></i>
+            </button>
+
+            <!-- Dropdown Menu -->
+            <div class="user-dropdown-menu" id="userDropdownMenu">
+              <div class="dropdown-header">
+                <div class="dropdown-user-name" id="dropdownUserFullName">นายวิทย์ ภูภักดี</div>
+                <div class="dropdown-user-role" id="dropdownUserRole">เจ้าหน้าที่ทั่วไป (ผู้ขอเบิก)</div>
+                <div class="dropdown-user-dept" id="dropdownUserDept">กลุ่มงานเทคโนโลยีสารสนเทศ</div>
+              </div>
+              <div class="dropdown-body">
+                <button type="button" class="dropdown-item" id="menuItemProfile">
+                  <i class="fa-solid fa-id-badge text-primary"></i> ข้อมูลโปรไฟล์ส่วนตัว
+                </button>
+                <button type="button" class="dropdown-item supply-only" id="menuItemPendingDropdown" style="display: none;">
+                  <i class="fa-solid fa-boxes-packing text-warning"></i> รายการรอจ่ายพัสดุ
+                  <span class="badge-mini" id="pendingDropdownCount">0</span>
+                </button>
+                <button type="button" class="dropdown-item supply-only" id="menuItemMembersDropdown" style="display: none;">
+                  <i class="fa-solid fa-users-gear text-info"></i> จัดการสมาชิก / สิทธิ์ผู้ใช้
+                </button>
+                <button type="button" class="dropdown-item" id="menuItemSwitchUser">
+                  <i class="fa-solid fa-repeat text-success"></i> สลับบัญชี / เข้าสู่ระบบ
+                </button>
+                <div class="dropdown-divider"></div>
+                <button type="button" class="dropdown-item text-danger" id="menuItemLogout">
+                  <i class="fa-solid fa-arrow-right-from-bracket"></i> ออกจากระบบ
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </aside>
 
   <!-- ================= MAIN SHEET CONTAINER (A4 SINGLE PAGE) ================= -->
   <main class="sheet-viewport">
+    
+    <!-- Role Mode Notice Banners (Screen only) -->
+    <div class="role-mode-indicator staff-indicator no-print" id="staffModeIndicator">
+      <i class="fa-solid fa-circle-info"></i>
+      <span><strong>โหมดเจ้าหน้าที่ขอเบิก:</strong> กรอกเฉพาะช่อง <strong>"เบิก"</strong> เท่านั้น (ช่อง <strong>"จ่าย"</strong> ปิดการแก้ไข สงวนไว้สำหรับเจ้าหน้าที่พัสดุเป็นผู้คีย์จ่ายจริง)</span>
+    </div>
+
+    <div class="role-mode-indicator pending-indicator no-print" id="pendingDispenseBanner" style="display: none;">
+      <div class="pending-banner-left">
+        <i class="fa-solid fa-boxes-packing text-warning fa-lg"></i>
+        <span>กำลังดำเนินการจ่ายพัสดุ ใบเบิกเลขที่ <strong id="bannerDocNo">REQ-XXXX</strong> (ผู้ขอเบิก: <strong id="bannerRequester">...</strong>) — กรุณาระบุจำนวนในช่อง <strong>"จ่าย"</strong> แล้วกดยืนยันจ่าย</span>
+      </div>
+      <button type="button" class="btn btn-outline-light btn-xs" id="btnCancelDispense">
+        <i class="fa-solid fa-xmark"></i> ยกเลิก/กลับโหมดปกติ
+      </button>
+    </div>
+
     <div class="a4-document" id="printableForm">
       
       <!-- FORM TITLE -->
@@ -264,6 +340,253 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" id="btnTestConnection">ทดสอบเชื่อมต่อ</button>
         <button type="button" class="btn btn-primary" id="btnSaveSettings">บันทึกการตั้งค่า</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: LOGIN ================= -->
+  <div class="modal-backdrop" id="loginModal">
+    <div class="modal-box modal-sm">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-right-to-bracket text-primary"></i> เข้าสู่ระบบเบิกจ่ายพัสดุ</h3>
+        <button type="button" class="modal-close" id="btnCloseLogin">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Quick Switch for Demonstration / Testing -->
+        <div class="quick-login-pills">
+          <span class="quick-login-label">เข้าสู่ระบบด่วนสำหรับการทดสอบ:</span>
+          <div class="quick-pill-group">
+            <button type="button" class="btn-pill-role role-supply" id="btnQuickLoginSupply" title="ล็อกอินเป็น เจ้าหน้าที่พัสดุ (คีย์จ่ายพัสดุ/จัดการสมาชิก)">
+              <i class="fa-solid fa-boxes-packing"></i> จนท.พัสดุ (admin)
+            </button>
+            <button type="button" class="btn-pill-role role-staff" id="btnQuickLoginStaff" title="ล็อกอินเป็น เจ้าหน้าที่ทั่วไป (คีย์เบิกเท่านั้น)">
+              <i class="fa-solid fa-user-pen"></i> จนท.ขอเบิก (wit)
+            </button>
+          </div>
+        </div>
+
+        <form id="loginForm" onsubmit="return false;">
+          <div class="form-group">
+            <label for="loginUsername"><strong>ชื่อผู้ใช้ (Username):</strong></label>
+            <input type="text" id="loginUsername" class="form-control" placeholder="เช่น admin หรือ wit" required autocomplete="username">
+          </div>
+          <div class="form-group">
+            <label for="loginPassword"><strong>รหัสผ่าน (Password):</strong></label>
+            <input type="password" id="loginPassword" class="form-control" placeholder="กรอกรหัสผ่าน (ค่าเริ่มต้น: 1234)" required autocomplete="current-password">
+          </div>
+          
+          <div class="modal-actions-stacked">
+            <button type="submit" class="btn btn-primary btn-block" id="btnSubmitLogin">
+              <i class="fa-solid fa-arrow-right-to-bracket"></i> เข้าสู่ระบบ
+            </button>
+            <div class="modal-switch-text">
+              ยังไม่มีบัญชีผู้ใช้? <a href="javascript:void(0)" id="linkSwitchToRegister">สมัครสมาชิกใหม่ที่นี่</a>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: REGISTER ================= -->
+  <div class="modal-backdrop" id="registerModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-user-plus text-primary"></i> สมัครสมาชิกผู้ใช้งานใหม่</h3>
+        <button type="button" class="modal-close" id="btnCloseRegister">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="registerForm" onsubmit="return false;">
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="regUsername"><strong>ชื่อผู้ใช้ (Username) *</strong></label>
+              <input type="text" id="regUsername" class="form-control" placeholder="ภาษาอังกฤษหรือตัวเลข" required autocomplete="username">
+            </div>
+            <div class="form-group">
+              <label for="regRole"><strong>บทบาท / หน้าที่ *</strong></label>
+              <select id="regRole" class="form-control">
+                <option value="staff" selected>เจ้าหน้าที่ทั่วไป (คีย์เบิกพัสดุ)</option>
+                <option value="supply_officer">เจ้าหน้าที่พัสดุ (คีย์จ่าย/คลังพัสดุ)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="regPassword"><strong>รหัสผ่าน *</strong></label>
+              <input type="password" id="regPassword" class="form-control" placeholder="อย่างน้อย 4 ตัวอักษร" required autocomplete="new-password">
+            </div>
+            <div class="form-group">
+              <label for="regConfirmPassword"><strong>ยืนยันรหัสผ่าน *</strong></label>
+              <input type="password" id="regConfirmPassword" class="form-control" placeholder="กรอกรหัสผ่านซ้ำอีกครั้ง" required autocomplete="new-password">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="regFullName"><strong>ชื่อ - นามสกุล *</strong></label>
+            <input type="text" id="regFullName" class="form-control" placeholder="เช่น นายสมศักดิ์ รักชาติ" required>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="regPosition"><strong>ตำแหน่ง</strong></label>
+              <input type="text" id="regPosition" class="form-control" placeholder="เช่น นิติกรปฏิบัติการ">
+            </div>
+            <div class="form-group">
+              <label for="regDepartment"><strong>กลุ่มงาน / ฝ่าย</strong></label>
+              <input type="text" id="regDepartment" class="form-control" placeholder="เช่น กลุ่มงานช่วยพิจารณาคดี" value="ศาลแขวงอุบลราชธานี">
+            </div>
+          </div>
+
+          <div class="modal-actions-stacked">
+            <button type="submit" class="btn btn-primary btn-block" id="btnSubmitRegister">
+              <i class="fa-solid fa-user-check"></i> ลงทะเบียนและเข้าสู่ระบบ
+            </button>
+            <div class="modal-switch-text">
+              มีบัญชีผู้ใช้แล้ว? <a href="javascript:void(0)" id="linkSwitchToLogin">เข้าสู่ระบบที่นี่</a>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: PROFILE ================= -->
+  <div class="modal-backdrop" id="profileModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-id-card text-primary"></i> จัดการโปรไฟล์ส่วนตัว</h3>
+        <button type="button" class="modal-close" id="btnCloseProfile">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="profileForm" onsubmit="return false;">
+          <div class="profile-header-summary">
+            <div class="profile-avatar-circle">
+              <i class="fa-solid fa-user"></i>
+            </div>
+            <div class="profile-meta">
+              <h4 id="profileDisplayUsername">username</h4>
+              <span class="user-role-badge" id="profileDisplayRole">เจ้าหน้าที่ทั่วไป</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="profileFullName"><strong>ชื่อ - นามสกุล:</strong></label>
+            <input type="text" id="profileFullName" class="form-control" required>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="profilePosition"><strong>ตำแหน่ง:</strong></label>
+              <input type="text" id="profilePosition" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="profileDepartment"><strong>กลุ่มงาน / ฝ่าย:</strong></label>
+              <input type="text" id="profileDepartment" class="form-control">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="profileNewPassword"><strong>เปลี่ยนรหัสผ่านใหม่:</strong></label>
+            <input type="password" id="profileNewPassword" class="form-control" placeholder="เว้นว่างไว้หากไม่ต้องการเปลี่ยนรหัสผ่าน">
+          </div>
+
+          <div class="alert-info-box">
+            <i class="fa-solid fa-circle-info"></i>
+            <div>การแก้ไขชื่อ ตำแหน่ง และกลุ่มงาน จะนำไปใส่เป็นค่าเริ่มต้นในช่องผู้ขอเบิกหรือผู้จ่ายพัสดุอัตโนมัติ</div>
+          </div>
+
+          <div class="modal-footer" style="padding: 12px 0 0 0; margin-top: 15px;">
+            <button type="button" class="btn btn-outline" id="btnCancelProfile">ยกเลิก</button>
+            <button type="submit" class="btn btn-primary" id="btnSaveProfile">
+              <i class="fa-solid fa-floppy-disk"></i> บันทึกโปรไฟล์
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: MEMBERS MANAGEMENT ================= -->
+  <div class="modal-backdrop" id="membersModal">
+    <div class="modal-box modal-lg">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-users-gear text-primary"></i> จัดการสมาชิกและกำหนดสิทธิ์ผู้ใช้งาน</h3>
+        <button type="button" class="modal-close" id="btnCloseMembers">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="history-filter-bar">
+          <input type="text" id="searchMembersInput" class="form-control" placeholder="ค้นหาชื่อผู้ใช้, ชื่อ-สกุล, ตำแหน่ง, กลุ่มงาน...">
+          <button type="button" class="btn btn-outline btn-sm" id="btnRefreshMembers">
+            <i class="fa-solid fa-arrows-rotate"></i> รีเฟรช
+          </button>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table" id="membersTable">
+            <thead>
+              <tr>
+                <th>รหัส</th>
+                <th>ชื่อผู้ใช้</th>
+                <th>ชื่อ - นามสกุล</th>
+                <th>ตำแหน่ง / กลุ่มงาน</th>
+                <th style="width: 140px;">สิทธิ์การใช้งาน</th>
+                <th style="width: 110px;">สถานะ</th>
+                <th style="width: 90px;" class="text-center">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody id="membersTableTbody">
+              <tr>
+                <td colspan="7" class="text-center text-muted" style="padding: 20px;">กำลังโหลดข้อมูลสมาชิก...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= MODAL: PENDING REQUISITIONS (QUEUE) ================= -->
+  <div class="modal-backdrop" id="pendingModal">
+    <div class="modal-box modal-lg">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-boxes-packing text-warning"></i> รายการคำขอเบิกพัสดุที่รอเจ้าหน้าที่พัสดุจ่าย (Queue)</h3>
+        <button type="button" class="modal-close" id="btnClosePending">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="history-filter-bar">
+          <input type="text" id="searchPendingInput" class="form-control" placeholder="ค้นหาเลขที่ใบเบิก, ผู้ขอเบิก...">
+          <button type="button" class="btn btn-outline btn-sm" id="btnRefreshPending">
+            <i class="fa-solid fa-arrows-rotate"></i> รีเฟรช
+          </button>
+        </div>
+
+        <div class="alert-info-box" style="margin-bottom: 12px; margin-top: 0;">
+          <i class="fa-solid fa-clipboard-check"></i>
+          <div>เมื่อคลิก <strong>"เปิดเพื่อจ่ายพัสดุ"</strong> ระบบจะโหลดรายการที่ขอเบิกขึ้นมา เจ้าหน้าที่พัสดุสามารถตรวจสอบและคีย์จำนวนในช่อง <strong>"จ่าย"</strong> แล้วกดยืนยันจ่ายเพื่อตัดสต็อกจริง</div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table" id="pendingTable">
+            <thead>
+              <tr>
+                <th>เลขที่</th>
+                <th>วันที่</th>
+                <th>ผู้ขอเบิก</th>
+                <th>กลุ่มงาน</th>
+                <th class="text-center">รายการ</th>
+                <th class="text-center">ยอดขอเบิก</th>
+                <th class="text-center">สถานะ</th>
+                <th class="text-center" style="width: 130px;">การดำเนินการ</th>
+              </tr>
+            </thead>
+            <tbody id="pendingTableTbody">
+              <tr>
+                <td colspan="8" class="text-center text-muted" style="padding: 20px;">กำลังโหลดรายการรอจ่าย...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
