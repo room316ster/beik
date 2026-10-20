@@ -84,8 +84,8 @@
             <button type="button" class="user-profile-pill" id="btnUserProfileMenuToggle">
               <i class="fa-solid fa-circle-user user-avatar-icon"></i>
               <div class="user-profile-info">
-                <span class="user-name-text" id="topUserName">นายวิทย์</span>
-                <span class="user-role-badge badge-staff" id="topUserRoleBadge">เจ้าหน้าที่เบิก</span>
+                <span class="user-name-text" id="topUserName">ผู้ใช้งาน</span>
+                <span class="user-role-badge badge-staff" id="topUserRoleBadge">เข้าสู่ระบบ</span>
               </div>
               <i class="fa-solid fa-chevron-down fa-2xs chevron-icon"></i>
             </button>
@@ -93,9 +93,9 @@
             <!-- Dropdown Menu -->
             <div class="user-dropdown-menu" id="userDropdownMenu">
               <div class="dropdown-header">
-                <div class="dropdown-user-name" id="dropdownUserFullName">นายวิทย์ ภูภักดี</div>
-                <div class="dropdown-user-role" id="dropdownUserRole">เจ้าหน้าที่ทั่วไป (ผู้ขอเบิก)</div>
-                <div class="dropdown-user-dept" id="dropdownUserDept">กลุ่มงานเทคโนโลยีสารสนเทศ</div>
+                <div class="dropdown-user-name" id="dropdownUserFullName">ผู้ใช้งานทั่วไป</div>
+                <div class="dropdown-user-role" id="dropdownUserRole">ยังไม่ได้เข้าสู่ระบบ</div>
+                <div class="dropdown-user-dept" id="dropdownUserDept">ศาลแขวงอุบลราชธานี</div>
               </div>
               <div class="dropdown-body">
                 <button type="button" class="dropdown-item" id="menuItemProfile">
@@ -127,11 +127,6 @@
   <main class="sheet-viewport">
     
     <!-- Role Mode Notice Banners (Screen only) -->
-    <div class="role-mode-indicator staff-indicator no-print" id="staffModeIndicator">
-      <i class="fa-solid fa-circle-info"></i>
-      <span><strong>โหมดเจ้าหน้าที่ขอเบิก:</strong> กรอกเฉพาะช่อง <strong>"เบิก"</strong> เท่านั้น (ช่อง <strong>"จ่าย"</strong> ปิดการแก้ไข สงวนไว้สำหรับเจ้าหน้าที่พัสดุเป็นผู้คีย์จ่ายจริง)</span>
-    </div>
-
     <div class="role-mode-indicator pending-indicator no-print" id="pendingDispenseBanner" style="display: none;">
       <div class="pending-banner-left">
         <i class="fa-solid fa-boxes-packing text-warning fa-lg"></i>
@@ -153,7 +148,7 @@
       <div class="sheet-header-grid">
         <div class="header-cell cell-date">
           <label>วันที่</label>
-          <input type="text" id="docDate" class="cell-input" placeholder="ระบุวันที่ เช่น 20 ตุลาคม 2569">
+          <input type="text" id="docDate" class="cell-input" placeholder="ระบุวันที่ เช่น 20 ตุลาคม 2567">
         </div>
         <div class="header-cell cell-org">
           <label>ส่วนราชการ</label>
@@ -161,16 +156,17 @@
         </div>
         <div class="header-cell cell-no">
           <label>เลขที่ใบเบิก</label>
-          <input type="text" id="docNo" class="cell-input font-mono font-bold" value="REQ-202610-0001">
+          <input type="text" id="docNo" class="cell-input font-mono font-bold" placeholder="REQ-YYYYMM-XXXX">
         </div>
 
         <div class="header-cell cell-person">
           <label>ข้าพเจ้า</label>
-          <input type="text" id="requesterName" class="cell-input" value="นายวิทย์ ภูภักดี">
+          <input type="text" id="requesterName" class="cell-input" placeholder="(ระบุชื่อ-นามสกุล ผู้ขอเบิก)">
         </div>
         <div class="header-cell cell-dept">
           <label>กลุ่มงาน</label>
-          <input type="text" id="department" class="cell-input" value="เทคโนโลยีสารสนเทศ">
+          <input type="text" id="department" class="cell-input" list="departmentDatalist" placeholder="(ระบุกลุ่มงาน / ฝ่าย)">
+          <datalist id="departmentDatalist"></datalist>
         </div>
         <div class="header-cell cell-purpose">
           <span class="purpose-text">ขอเบิกพัสดุสำนักงาน/สิ่งบริโภค รายการ ดังนี้</span>
@@ -241,10 +237,10 @@
                 ลงชื่อ .................................................... <span class="sig-role-text">ผู้เบิก/หัวหน้ากลุ่ม</span>
               </div>
               <div class="sig-name-wrap">
-                ( <input type="text" id="sigName1" class="sig-input font-bold" value="นายวิทย์ ภูภักดี"> )
+                ( <input type="text" id="sigName1" class="sig-input font-bold" placeholder="ชื่อ-สกุล ผู้เบิก"> )
               </div>
               <div class="sig-pos-wrap">
-                <input type="text" id="sigPos1" class="sig-input" value="นักวิชาการคอมพิวเตอร์ปฏิบัติการ">
+                <input type="text" id="sigPos1" class="sig-input" placeholder="ตำแหน่ง">
               </div>
             </div>
 
@@ -254,10 +250,10 @@
                 ลงชื่อ .................................................... <span class="sig-role-text">ผู้อนุมัติ/หัวหน้าหน่วยงาน</span>
               </div>
               <div class="sig-name-wrap">
-                ( <input type="text" id="sigName2" class="sig-input font-bold" value="นางสุภาภรณ์ สุดามาตร"> )
+                ( <input type="text" id="sigName2" class="sig-input font-bold" placeholder="ชื่อ-สกุล ผู้อนุมัติ"> )
               </div>
               <div class="sig-pos-wrap">
-                <input type="text" id="sigPos2" class="sig-input" value="นักวิชาการเงินและบัญชีชำนาญการพิเศษ">
+                <input type="text" id="sigPos2" class="sig-input" placeholder="ตำแหน่ง">
               </div>
             </div>
 
@@ -267,10 +263,10 @@
                 ลงชื่อ .................................................... <span class="sig-role-text">ผู้จ่าย/เจ้าหน้าที่พัสดุ</span>
               </div>
               <div class="sig-name-wrap">
-                ( <input type="text" id="sigName3" class="sig-input font-bold" value="นางสาวชัญญาพัชร์ โสภา"> )
+                ( <input type="text" id="sigName3" class="sig-input font-bold" placeholder="ชื่อ-สกุล จนท.พัสดุ"> )
               </div>
               <div class="sig-pos-wrap">
-                <input type="text" id="sigPos3" class="sig-input" value="นักวิชาการพัสดุชำนาญการ">
+                <input type="text" id="sigPos3" class="sig-input" placeholder="ตำแหน่ง">
               </div>
             </div>
           </div>
@@ -335,6 +331,26 @@
         <div class="alert-info-box">
           <i class="fa-solid fa-circle-info"></i>
           <div>ระบบจะบันทึกเฉพาะรายการที่มีการระบุ <strong>จำนวนที่เบิก</strong> หรือ <strong>จำนวนที่จ่าย</strong> ลงในชีตฐานข้อมูล</div>
+        </div>
+
+        <!-- Section: Auto-Install Sheets & Columns -->
+        <div class="settings-card-feature">
+          <div class="feature-title">
+            <i class="fa-solid fa-wand-magic-sparkles text-warning"></i>
+            <strong>ฟังก์ชันติดตั้งชีตและคอลัมน์อัตโนมัติ (Auto-Install Sheets)</strong>
+          </div>
+          <p class="feature-desc">
+            ตรวจสอบและสร้างแท็บชีตทั้ง 5 แท็บ (<code>ผู้ใช้งาน</code>, <code>วัสดุ (143 รายการ)</code>, <code>ใบเบิกวัสดุ</code>, <code>รายการเบิกย่อย</code>, <code>ตั้งค่า</code>) พร้อมหัวคอลัมน์ครบถ้วน จัดสีหัวตาราง ปรับขนาดคอลัมน์ และบันทึกข้อมูลตั้งต้นให้อัตโนมัติ
+          </p>
+          <div class="feature-action-row">
+            <label class="checkbox-label" title="หากเลือก ระบบจะล้างและสร้างตารางเริ่มต้นใหม่ทั้งหมด">
+              <input type="checkbox" id="chkForceResetSheets"> ติดตั้งใหม่ทั้งหมด (Reset ข้อมูล)
+            </label>
+            <button type="button" class="btn btn-warning btn-sm" id="btnAutoInstallSheets">
+              <i class="fa-solid fa-bolt"></i> ติดตั้งชีตและคอลัมน์อัตโนมัติ
+            </button>
+          </div>
+          <div id="installResultBox" class="install-result-box" style="display: none;"></div>
         </div>
       </div>
       <div class="modal-footer">
@@ -438,6 +454,11 @@
             </div>
           </div>
 
+          <div class="alert-info-box" style="margin-bottom: 14px; margin-top: 4px; font-size: 12px;">
+            <i class="fa-solid fa-cloud-arrow-up text-primary"></i>
+            <div>ข้อมูลการสมัครจะถูกบันทึกจัดเก็บลงใน Google Sheets แท็บ <strong>"ผู้ใช้งาน"</strong> โดยตรงทันที</div>
+          </div>
+
           <div class="modal-actions-stacked">
             <button type="submit" class="btn btn-primary btn-block" id="btnSubmitRegister">
               <i class="fa-solid fa-user-check"></i> ลงทะเบียนและเข้าสู่ระบบ
@@ -519,6 +540,9 @@
           <input type="text" id="searchMembersInput" class="form-control" placeholder="ค้นหาชื่อผู้ใช้, ชื่อ-สกุล, ตำแหน่ง, กลุ่มงาน...">
           <button type="button" class="btn btn-outline btn-sm" id="btnRefreshMembers">
             <i class="fa-solid fa-arrows-rotate"></i> รีเฟรช
+          </button>
+          <button type="button" class="btn btn-warning btn-sm" id="btnQuickInstallSheetsFromMembers" title="ติดตั้งหรือตรวจสอบชีตและคอลัมน์อัตโนมัติ">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> ติดตั้งชีตอัตโนมัติ
           </button>
         </div>
 

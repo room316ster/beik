@@ -7,7 +7,7 @@
  * ==============================================================================
  */
 
-// Web App URL เริ่มต้นของ Google Apps Script (Version 5 Deployed)
+// Web App URL เริ่มต้นของ Google Apps Script (Version 5/9 Deployed)
 const DEFAULT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw00ssaHx4WEvK4aoZ6wk_p3zyOw8atXKKgBZ6tjL-FsT0VEt_wSONED-D2TpJdcTK4QA/exec";
 
 // LocalStorage Keys
@@ -17,6 +17,20 @@ const STORAGE_KEYS = {
   REQUISITIONS: "req_system_history",
   CURRENT_USER: "req_system_current_user"
 };
+
+/**
+ * ดึง Web App URL ที่ถูกต้อง พร้อมกรองค่าว่างหรือ URL ที่เสียหายออก
+ */
+function getActiveWebAppUrl() {
+  const saved = (localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || "").trim();
+  if (!saved || saved.includes(" ") || saved.length < 50 || !saved.startsWith("https://script.google.com")) {
+    try {
+      localStorage.setItem(STORAGE_KEYS.WEB_APP_URL, DEFAULT_WEB_APP_URL);
+    } catch (e) {}
+    return DEFAULT_WEB_APP_URL;
+  }
+  return saved;
+}
 
 // ================= รายการพัสดุทั้ง 143 รายการ (ตรงตามภาพต้นฉบับ 100%) =================
 const ITEMS_DATABASE = [
@@ -184,21 +198,18 @@ function loadCurrentUser() {
   const saved = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
   if (saved) {
     try {
-      currentUser = JSON.parse(saved);
+      const parsed = JSON.parse(saved);
+      // หากเป็นข้อมูลจำลองเดิม (wit) ให้เคลียร์ออกเพื่อให้เป็นข้อมูลจริง
+      if (parsed && parsed.username === "wit") {
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+        currentUser = null;
+        return;
+      }
+      currentUser = parsed;
       return;
     } catch (e) {}
   }
-  // ค่าเริ่มต้น: เจ้าหน้าที่ทั่วไป (ผู้ขอเบิก) เพื่อให้พร้อมใช้งานทันที
-  currentUser = {
-    id: "USR-0002",
-    username: "wit",
-    fullName: "นายวิทย์ ภูภักดี",
-    position: "นักวิชาการคอมพิวเตอร์ปฏิบัติการ",
-    department: "กลุ่มงานเทคโนโลยีสารสนเทศ",
-    role: "staff",
-    status: "อนุมัติแล้ว"
-  };
-  localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
+  currentUser = null;
 }
 
 function isStaffUser() {
@@ -218,10 +229,13 @@ function applyUserRoleUI() {
 
   if (!currentUser) {
     document.querySelectorAll(".supply-only").forEach(el => el.style.display = "none");
-    const staffBanner = document.getElementById("staffModeIndicator");
-    if (staffBanner) staffBanner.style.display = "none";
     const saveBtnText = document.getElementById("saveBtnText");
-    if (saveBtnText) saveBtnText.textContent = "เข้าสู่ระบบเพื่อเริ่มใช้งาน";
+    if (saveBtnText) saveBtnText.textContent = "ส่งคำขอเบิกพัสดุ";
+
+    const docOrg = document.getElementById("docOrg");
+    if (docOrg && (!docOrg.value || docOrg.value.trim() === "")) {
+      docOrg.value = "ศาลแขวงอุบลราชธานี";
+    }
     return;
   }
 
@@ -265,13 +279,7 @@ function applyUserRoleUI() {
     el.style.display = isSupply ? "" : "none";
   });
 
-  // 4. Role Indicator Banner
-  const staffBanner = document.getElementById("staffModeIndicator");
-  if (staffBanner) {
-    staffBanner.style.display = (!isSupply && !pendingDispenseDocNo) ? "flex" : "none";
-  }
-
-  // 5. ปรับปุ่มบันทึกและข้อความ
+  // 4. ปรับปุ่มบันทึกและข้อความ
   const saveBtnText = document.getElementById("saveBtnText");
   const saveBtnIcon = document.getElementById("saveBtnIcon");
   if (saveBtnText && saveBtnIcon) {
@@ -287,9 +295,9 @@ function applyUserRoleUI() {
     }
   }
 
-  // 6. Autofill ข้อมูลในเอกสาร
+  // 5. Autofill ข้อมูลจริงในเอกสารจากผู้ใช้จริงที่ล็อกอิน
   if (role === "staff") {
-    // เจ้าหน้าที่ขอเบิก: ใส่ชื่อตนเองในช่องผู้ขอเบิก
+    // เจ้าหน้าที่ขอเบิก: ใส่ชื่อ-กลุ่มงานจริงตนเอง
     if (!pendingDispenseDocNo) {
       const reqInput = document.getElementById("requesterName");
       const deptInput = document.getElementById("department");
@@ -302,7 +310,7 @@ function applyUserRoleUI() {
       if (pos1 && currentUser.position) pos1.value = currentUser.position;
     }
   } else if (isSupply) {
-    // เจ้าหน้าที่พัสดุ: ใส่ชื่อตนเองในช่องผู้จ่าย/เจ้าหน้าที่พัสดุ
+    // เจ้าหน้าที่พัสดุ: ใส่ชื่อจริงตนเองในช่องผู้จ่าย/เจ้าหน้าที่พัสดุ
     const sig3 = document.getElementById("sigName3");
     const pos3 = document.getElementById("sigPos3");
     if (sig3 && currentUser.fullName) sig3.value = currentUser.fullName;
@@ -335,18 +343,27 @@ function initDateAndDocNo() {
   ];
   const day = now.getDate();
   const month = thaiMonths[now.getMonth()];
-  const year = now.getFullYear() + 543;
+  
+  // ปรับปี พ.ศ. ให้เป็นปีปัจจุบันจริง (พ.ศ. 2567 / 2024 หรือตามปีปัจจุบัน)
+  const curY = now.getFullYear();
+  const thaiYear = curY >= 2026 ? 2567 : curY + 543;
   
   const dateInput = document.getElementById("docDate");
   if (dateInput && !dateInput.value) {
-    dateInput.value = `${day} ${month} ${year}`;
+    dateInput.value = `${day} ${month} ${thaiYear}`;
   }
 
-  // สร้างเลขที่ใบเบิกอัตโนมัติ
-  const yStr = now.getFullYear();
+  // ส่วนราชการตั้งค่าเริ่มต้นเป็น "ศาลแขวงอุบลราชธานี"
+  const docOrg = document.getElementById("docOrg");
+  if (docOrg && (!docOrg.value || docOrg.value.trim() === "")) {
+    docOrg.value = "ศาลแขวงอุบลราชธานี";
+  }
+
+  // สร้างเลขที่ใบเบิกอัตโนมัติเบื้องต้น (จะถูกแทนที่ด้วยเลขถัดไปจริงจาก Google Sheets เมื่อเชื่อมต่อ)
+  const yStr = thaiYear - 543;
   const mStr = ("0" + (now.getMonth() + 1)).slice(-2);
   const docNoInput = document.getElementById("docNo");
-  if (docNoInput && (!docNoInput.value || docNoInput.value.includes("REQ-"))) {
+  if (docNoInput && (!docNoInput.value || docNoInput.value.includes("202610-0001"))) {
     docNoInput.value = `REQ-${yStr}${mStr}-0001`;
   }
 }
@@ -602,18 +619,32 @@ function initEventListeners() {
   // 9. ตั้งค่าการเชื่อมต่อ Google Sheets
   const settingsModal = document.getElementById("settingsModal");
   document.getElementById("btnOpenSettings").addEventListener("click", () => {
-    document.getElementById("settingWebAppUrl").value = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+    document.getElementById("settingWebAppUrl").value = getActiveWebAppUrl();
     settingsModal.classList.add("open");
   });
   document.getElementById("btnCloseSettings").addEventListener("click", () => settingsModal.classList.remove("open"));
   document.getElementById("btnSaveSettings").addEventListener("click", () => {
-    const url = document.getElementById("settingWebAppUrl").value.trim();
-    localStorage.setItem(STORAGE_KEYS.WEB_APP_URL, url);
+    const rawUrl = document.getElementById("settingWebAppUrl").value.trim();
+    if (rawUrl && (rawUrl.includes(" ") || rawUrl.length < 40 || !rawUrl.startsWith("https://script.google.com"))) {
+      showToast("URL ไม่ถูกต้อง ต้องเป็น Apps Script URL (ขึ้นต้นด้วย https://script.google.com)", "warning");
+      return;
+    }
+    const finalUrl = rawUrl || DEFAULT_WEB_APP_URL;
+    localStorage.setItem(STORAGE_KEYS.WEB_APP_URL, finalUrl);
     settingsModal.classList.remove("open");
-    showToast("บันทึกการตั้งค่าแล้ว", "success");
+    showToast("บันทึกการตั้งค่า Web App เรียบร้อยแล้ว", "success");
     syncWithBackend();
   });
   document.getElementById("btnTestConnection").addEventListener("click", testConnection);
+
+  // 10. ติดตั้งชีตและคอลัมน์อัตโนมัติ (Settings Modal)
+  const btnAutoInstall = document.getElementById("btnAutoInstallSheets");
+  if (btnAutoInstall) {
+    btnAutoInstall.addEventListener("click", () => {
+      const forceReset = document.getElementById("chkForceResetSheets") ? document.getElementById("chkForceResetSheets").checked : false;
+      triggerAutoInstallSheets(forceReset);
+    });
+  }
 
   // Sync Requester Name with Signature Name 1
   document.getElementById("requesterName").addEventListener("input", (e) => {
@@ -737,6 +768,13 @@ function initAuthEventListeners() {
     loadMembersData();
     showToast("รีเฟรชรายชื่อสมาชิกแล้ว", "info");
   });
+
+  const btnQuickInstall = document.getElementById("btnQuickInstallSheetsFromMembers");
+  if (btnQuickInstall) {
+    btnQuickInstall.addEventListener("click", () => {
+      triggerAutoInstallSheets(false);
+    });
+  }
 }
 
 // ================= AUTHENTICATION ACTIONS =================
@@ -751,7 +789,7 @@ async function submitLogin() {
 
   showToast("กำลังตรวจสอบข้อมูลเข้าสู่ระบบ...", "info");
 
-  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+  const webAppUrl = getActiveWebAppUrl();
 
   try {
     const res = await fetch(webAppUrl, {
@@ -812,6 +850,11 @@ async function submitRegister() {
     return;
   }
 
+  if (username.length < 3) {
+    showToast("ชื่อผู้ใช้ต้องมีความยาวอย่างน้อย 3 ตัวอักษร", "warning");
+    return;
+  }
+
   if (password.length < 4) {
     showToast("รหัสผ่านต้องมีความยาวอย่างน้อย 4 ตัวอักษร", "warning");
     return;
@@ -822,9 +865,16 @@ async function submitRegister() {
     return;
   }
 
-  showToast("กำลังลงทะเบียนสมาชิกใหม่...", "info");
+  const btn = document.getElementById("btnSubmitRegister");
+  const originalBtnHtml = btn ? btn.innerHTML : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> กำลังบันทึกข้อมูลลง Google Sheets...`;
+  }
 
-  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+  showToast("กำลังบันทึกข้อมูลสมาชิกลงในชีต 'ผู้ใช้งาน'...", "info");
+
+  const webAppUrl = getActiveWebAppUrl();
 
   try {
     const res = await fetch(webAppUrl, {
@@ -840,14 +890,26 @@ async function submitRegister() {
     if (result.status === "success" && result.user) {
       currentUser = result.user;
       localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
+
+      // ผสานเข้า membersCache ทันที
+      if (Array.isArray(membersCache)) {
+        const existingIdx = membersCache.findIndex(m => (m.username || "").toLowerCase() === currentUser.username.toLowerCase());
+        if (existingIdx >= 0) membersCache[existingIdx] = currentUser;
+        else membersCache.push(currentUser);
+      }
+
       document.getElementById("registerModal").classList.remove("open");
+      const form = document.getElementById("registerForm");
+      if (form) form.reset();
+
       applyUserRoleUI();
       renderAllTables();
-      showToast("ลงทะเบียนสำเร็จและเข้าสู่ระบบเรียบร้อย!", "success");
+      showToast(`สมัครสมาชิกสำเร็จ! บันทึกข้อมูลลงใน Google Sheets เรียบร้อย (รหัส: ${currentUser.id})`, "success");
     } else {
       showToast(result.message || "เกิดข้อผิดพลาดในการลงทะเบียน", "error");
     }
   } catch (err) {
+    console.warn("Register network fallback:", err);
     // Offline local register
     currentUser = {
       id: "USR-" + Date.now().toString().slice(-4),
@@ -859,10 +921,114 @@ async function submitRegister() {
       status: "อนุมัติแล้ว"
     };
     localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
+    if (Array.isArray(membersCache)) membersCache.push(currentUser);
+
     document.getElementById("registerModal").classList.remove("open");
     applyUserRoleUI();
     renderAllTables();
-    showToast("ลงทะเบียนและเข้าสู่ระบบเรียบร้อย (ออฟไลน์)", "success");
+    showToast(`ลงทะเบียนและเข้าสู่ระบบเรียบร้อย (โหมดออฟไลน์/บันทึกในเครื่อง)`, "info");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalBtnHtml;
+    }
+  }
+}
+
+/**
+ * ================= AUTO-INSTALL SHEETS & COLUMNS FUNCTION =================
+ * เรียกใช้ฟังก์ชันติดตั้งและตรวจสอบความสมบูรณ์ของชีตและคอลัมน์อัตโนมัติ
+ */
+async function triggerAutoInstallSheets(forceReset = false) {
+  if (forceReset) {
+    const ok = confirm("⚠️ คำเตือนสำคัญ:\nคุณเลือก 'ติดตั้งใหม่ทั้งหมด (Reset ข้อมูล)'\nระบบจะล้างข้อมูลและติดตั้งค่าเริ่มต้นใหม่ทั้งหมดสำหรับทั้ง 5 แท็บ\n\nคุณแน่ใจหรือไม่ว่าต้องการดำเนินการต่อ?");
+    if (!ok) return;
+  }
+
+  const btn = document.getElementById("btnAutoInstallSheets");
+  const quickBtn = document.getElementById("btnQuickInstallSheetsFromMembers");
+  const resultBox = document.getElementById("installResultBox");
+
+  const origBtnText = btn ? btn.innerHTML : "";
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> กำลังติดตั้ง/ซ่อมแซมชีต...`;
+  }
+  if (quickBtn) {
+    quickBtn.disabled = true;
+    quickBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> กำลังติดตั้ง...`;
+  }
+
+  showToast("กำลังเชื่อมต่อ Google Sheets เพื่อติดตั้งและจัดระเบียบคอลัมน์...", "info");
+
+  const webAppUrl = getActiveWebAppUrl();
+
+  try {
+    const res = await fetch(webAppUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "autoInstallDatabase",
+        data: { forceReset: forceReset }
+      })
+    });
+    const result = await res.json();
+
+    if (result.status === "success") {
+      let html = `
+        <div style="font-weight: 600; margin-bottom: 8px; color: #047857;">
+          <i class="fa-solid fa-circle-check"></i> ${escapeHtml(result.message)}
+        </div>
+      `;
+
+      if (Array.isArray(result.sheets)) {
+        html += result.sheets.map(s => {
+          let extra = "";
+          if (s.missingColumnsAppended && s.missingColumnsAppended.length > 0) {
+            extra = ` <span style="color: #D97706; font-size: 10.5px;">(เพิ่มคอลัมน์ใหม่: ${escapeHtml(s.missingColumnsAppended.join(", "))})</span>`;
+          }
+          return `
+            <div class="install-result-item">
+              <span><strong>แท็บ "${escapeHtml(s.name)}"</strong> (${s.rowCount} แถว, ${s.colCount} คอลัมน์)${extra}</span>
+              <span class="install-pill-success"><i class="fa-solid fa-check"></i> พร้อมใช้งาน</span>
+            </div>
+          `;
+        }).join("");
+      }
+
+      if (resultBox) {
+        resultBox.innerHTML = html;
+        resultBox.style.display = "block";
+      }
+
+      showToast("ติดตั้งและตรวจสอบชีตทั้ง 5 แท็บพร้อมคอลัมน์ใน Google Sheets สำเร็จเรียบร้อยแล้ว!", "success");
+
+      // โหลดข้อมูลล่าสุดจากชีต
+      syncWithBackend();
+      loadMembersData();
+    } else {
+      showToast(result.message || "เกิดข้อผิดพลาดในการติดตั้งชีต", "error");
+      if (resultBox) {
+        resultBox.innerHTML = `<div class="text-danger"><i class="fa-solid fa-circle-exclamation"></i> ${escapeHtml(result.message || "เกิดข้อผิดพลาด")}</div>`;
+        resultBox.style.display = "block";
+      }
+    }
+  } catch (err) {
+    console.error("Auto-install error:", err);
+    showToast("เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อติดตั้งชีต: " + err.message, "error");
+    if (resultBox) {
+      resultBox.innerHTML = `<div class="text-danger"><i class="fa-solid fa-triangle-exclamation"></i> เกิดข้อผิดพลาดในการเชื่อมต่อ: ${escapeHtml(err.message)}</div>`;
+      resultBox.style.display = "block";
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = origBtnText;
+    }
+    if (quickBtn) {
+      quickBtn.disabled = false;
+      quickBtn.innerHTML = `<i class="fa-solid fa-wand-magic-sparkles"></i> ติดตั้งชีตอัตโนมัติ`;
+    }
   }
 }
 
@@ -895,7 +1061,7 @@ async function submitProfileUpdate() {
 
   showToast("กำลังอัปเดตโปรไฟล์...", "info");
 
-  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+  const webAppUrl = getActiveWebAppUrl();
 
   try {
     const res = await fetch(webAppUrl, {
@@ -938,7 +1104,7 @@ async function loadMembersData() {
   if (!tbody) return;
   tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted" style="padding: 20px;"><i class="fa-solid fa-spinner fa-spin"></i> กำลังโหลดข้อมูลสมาชิก...</td></tr>`;
 
-  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+  const webAppUrl = getActiveWebAppUrl();
 
   try {
     const res = await fetch(`${webAppUrl}?action=getUsers`);
@@ -1006,7 +1172,7 @@ function renderMembersTable() {
 
 async function updateMemberRole(userId, newRole) {
   showToast("กำลังอัปเดตสิทธิ์...", "info");
-  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+  const webAppUrl = getActiveWebAppUrl();
 
   try {
     await fetch(webAppUrl, {
@@ -1032,7 +1198,7 @@ async function deleteMember(userId, username) {
 
   if (!confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบสมาชิก "${username}" ออกจากระบบ?`)) return;
 
-  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+  const webAppUrl = getActiveWebAppUrl();
   try {
     await fetch(webAppUrl, {
       method: "POST",
@@ -1201,7 +1367,7 @@ async function handleSaveRequisition() {
   }
 
   const docNo = document.getElementById("docNo").value.trim();
-  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+  const webAppUrl = getActiveWebAppUrl();
   const btn = document.getElementById("btnSaveToSheets");
   btn.disabled = true;
   btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> บันทึก...`;
@@ -1449,15 +1615,37 @@ function loadSavedHeader() {
 }
 
 async function syncWithBackend() {
-  const webAppUrl = localStorage.getItem(STORAGE_KEYS.WEB_APP_URL) || DEFAULT_WEB_APP_URL;
+  const webAppUrl = getActiveWebAppUrl();
   if (!webAppUrl) return;
 
   try {
     const res = await fetch(`${webAppUrl}?action=getInitData`);
     const data = await res.json();
     if (data.status === "success") {
+      // 1. ซิงก์รายการวัสดุจริงจาก Google Sheets แท็บ 'วัสดุ'
+      if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+        data.items.forEach(remoteItem => {
+          const id = Number(remoteItem.rowIndex - 1 || remoteItem.id || (remoteItem.code ? remoteItem.code.replace(/\D/g, '') : 0));
+          const existing = ITEMS_DATABASE.find(i => i.id === id);
+          if (existing) {
+            if (remoteItem.name) existing.name = remoteItem.name;
+            if (remoteItem.unit) existing.unit = remoteItem.unit;
+            if (remoteItem.stock !== undefined) existing.stock = remoteItem.stock;
+          }
+        });
+        renderAllTables();
+      }
+
+      // 2. ซิงก์รายชื่อกลุ่มงานจริงจาก Google Sheets แท็บ 'ตั้งค่า' เข้า datalist
+      if (data.departments && Array.isArray(data.departments) && data.departments.length > 0) {
+        const dList = document.getElementById("departmentDatalist");
+        if (dList) {
+          dList.innerHTML = data.departments.map(d => `<option value="${escapeHtml(d)}">`).join("");
+        }
+      }
+
+      // 3. ผสานประวัติใบเบิกจาก Google Sheets เข้า historyCache
       if (data.requisitions && Array.isArray(data.requisitions)) {
-        // ผสานประวัติจาก Google Sheets เข้า historyCache
         data.requisitions.forEach(remoteReq => {
           const idx = historyCache.findIndex(r => r.docNo === remoteReq.docNo);
           if (idx >= 0) {
@@ -1469,9 +1657,11 @@ async function syncWithBackend() {
         localStorage.setItem(STORAGE_KEYS.REQUISITIONS, JSON.stringify(historyCache));
         updatePendingBadgeCount();
       }
+
+      // 4. ซิงก์เลขที่ใบเบิกถัดไปจริงจาก Google Sheets
       if (data.nextDocNo && !pendingDispenseDocNo) {
         const curDocInput = document.getElementById("docNo");
-        if (curDocInput && (!curDocInput.value || curDocInput.value === "REQ-202610-0001")) {
+        if (curDocInput && (!curDocInput.value || curDocInput.value.includes("0001"))) {
           curDocInput.value = data.nextDocNo;
         }
       }
