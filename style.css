@@ -1,0 +1,729 @@
+/* ==============================================================================
+   CSS DESIGN - ระบบใบเบิกพัสดุ (แบบฟอร์ม 143 รายการ 3 คอลัมน์ A4 หน้าเดียว)
+   ตรงตามภาพต้นฉบับ 100% พร้อมการควบคุมระยะพิมพ์ให้อยู่ใน 1 หน้า A4 อย่างเคร่งครัด
+   ============================================================================== */
+
+:root {
+  --primary: #1E3A8A;
+  --primary-hover: #172554;
+  --accent-yellow: #EAB308;
+  --accent-yellow-border: #CA8A04;
+  --highlight-req: #EFF6FF;
+  --highlight-disp: #F0FDF4;
+  --row-active-bg: #FEF9C3;
+  
+  --border-dark: #334155;
+  --border-light: #94A3B8;
+  --border-table: #64748B;
+  
+  --bg-page: #E2E8F0;
+  --bg-sheet: #FFFFFF;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: var(--bg-page);
+  color: #0F172A;
+  line-height: 1.25;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .btn, strong {
+  font-family: 'Prompt', 'Sarabun', sans-serif;
+}
+
+/* ================= STICKY TOP TOOLBAR ================= */
+.top-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 500;
+  background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+  color: #FFFFFF;
+  padding: 8px 18px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.toolbar-container {
+  max-width: 1380px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.toolbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #F8FAFC;
+}
+
+.toolbar-search {
+  flex: 1;
+  max-width: 320px;
+  position: relative;
+}
+
+.toolbar-search i {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94A3B8;
+  font-size: 12px;
+}
+
+.toolbar-search input {
+  width: 100%;
+  padding: 6px 10px 6px 30px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.1);
+  color: #FFF;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.toolbar-search input:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.2);
+  border-color: #93C5FD;
+}
+
+.toolbar-search input::placeholder {
+  color: #94A3B8;
+}
+
+.toolbar-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.summary-pill {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+}
+
+.summary-pill.highlight {
+  background: rgba(234, 179, 8, 0.2);
+  border-color: #EAB308;
+  color: #FEF08A;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ================= BUTTONS ================= */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 12.5px;
+}
+
+.btn-primary {
+  background: #2563EB;
+  color: #FFF;
+}
+
+.btn-primary:hover {
+  background: #1D4ED8;
+}
+
+.btn-warning {
+  background: #EAB308;
+  color: #000;
+  font-weight: 600;
+}
+
+.btn-warning:hover {
+  background: #CA8A04;
+  color: #FFF;
+}
+
+.btn-outline-light {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #F8FAFC;
+}
+
+.btn-outline-light:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.btn-icon-top {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #FFF;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+
+.btn-icon-top:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* ================= MAIN SHEET VIEWPORT ================= */
+.sheet-viewport {
+  padding: 16px 10px 40px 10px;
+  display: flex;
+  justify-content: center;
+}
+
+/* The A4 Canvas Sheet */
+.a4-document {
+  background: var(--bg-sheet);
+  width: 210mm;
+  min-height: 297mm;
+  padding: 6mm 7mm 5mm 7mm;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  border-radius: 2px;
+  color: #000000;
+  position: relative;
+  box-sizing: border-box;
+}
+
+/* Title Banner */
+.sheet-title-banner {
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.sheet-title-banner h1 {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #000000;
+  margin: 0;
+  padding: 0;
+}
+
+/* Header Grid (6 cells matching the image) */
+.sheet-header-grid {
+  display: grid;
+  grid-template-columns: 31% 38% 31%;
+  grid-template-rows: auto auto;
+  border: 1px solid #000000;
+  margin-bottom: 4px;
+  font-size: 11.5px;
+}
+
+.header-cell {
+  border: 1px solid #777;
+  padding: 2px 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #FFF;
+}
+
+.header-cell label {
+  font-weight: 600;
+  white-space: nowrap;
+  color: #000;
+}
+
+.cell-input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px dotted #888;
+  padding: 1px 3px;
+  font-size: 11.5px;
+  font-family: inherit;
+  color: #000;
+  background: transparent;
+}
+
+.cell-input:focus {
+  outline: none;
+  background-color: #FEF9C3;
+  border-bottom: 1.5px solid #2563EB;
+}
+
+.cell-purpose {
+  grid-column: 3 / 4;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 11px;
+}
+
+/* ================= 3-COLUMN TABLE CONTAINER ================= */
+.three-column-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  width: 100%;
+  border: 1px solid #000;
+}
+
+/* Yellow divider lines between columns (Matches the original sheet) */
+.col-border-right {
+  border-right: 3px solid var(--accent-yellow) !important;
+}
+
+.column-block {
+  display: flex;
+  flex-direction: column;
+}
+
+.col-3-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+/* Grid Table */
+.grid-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10.5px;
+  line-height: 1.15;
+}
+
+.grid-table th,
+.grid-table td {
+  border: 1px solid #000000;
+  padding: 1.2px 2px;
+  vertical-align: middle;
+}
+
+.grid-table th {
+  background-color: #F8FAFC;
+  font-weight: 700;
+  text-align: center;
+  font-size: 10.5px;
+  height: 18px;
+}
+
+.col-head-req {
+  background-color: #EFF6FF !important;
+  color: #1E3A8A;
+}
+
+.col-head-disp {
+  background-color: #F0FDF4 !important;
+  color: #065F46;
+}
+
+.grid-table tbody tr {
+  height: 14.8px; /* Calibrated to fit 50 rows in single page A4 */
+}
+
+.grid-table tbody tr.has-qty {
+  background-color: var(--row-active-bg) !important;
+  font-weight: 600;
+}
+
+.grid-table tbody tr.search-match {
+  outline: 2px solid #2563EB;
+  background-color: #DBEAFE !important;
+}
+
+.grid-table tbody tr.is-hidden {
+  display: none !important;
+}
+
+.td-no {
+  text-align: center;
+  font-size: 10px;
+  color: #333;
+}
+
+.td-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 145px;
+  font-size: 10px;
+}
+
+.td-unit {
+  text-align: center;
+  white-space: nowrap;
+  font-size: 10px;
+}
+
+/* Interactive Input in Cells */
+.cell-num-input {
+  width: 100%;
+  height: 14px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-family: inherit;
+  color: #000;
+}
+
+.cell-num-input:focus {
+  outline: none;
+  background-color: #FFFFFF;
+  box-shadow: inset 0 0 0 1px #2563EB;
+}
+
+.input-req {
+  color: #1E3A8A;
+}
+
+.input-disp {
+  color: #065F46;
+}
+
+/* ================= 3 SIGNATURES BLOCK (EXACT REPLICA) ================= */
+.signatures-wrapper {
+  margin-top: 3px;
+  padding: 2px 2px 0 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sig-block {
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.sig-line {
+  white-space: nowrap;
+  margin-bottom: 1px;
+}
+
+.sig-role-text {
+  font-weight: 700;
+  font-size: 10px;
+}
+
+.sig-name-wrap, .sig-pos-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.sig-input {
+  border: none;
+  background: transparent;
+  text-align: center;
+  font-size: 10px;
+  font-family: inherit;
+  color: #000;
+  width: 85%;
+  padding: 0;
+}
+
+.sig-input:focus {
+  outline: none;
+  background-color: #FEF9C3;
+  border-bottom: 1px dotted #333;
+}
+
+/* ================= MODALS & TOASTS ================= */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(3px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-backdrop.open {
+  display: flex;
+}
+
+.modal-box {
+  background: #FFF;
+  border-radius: 10px;
+  width: 90%;
+  max-width: 520px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.modal-box.modal-lg {
+  max-width: 800px;
+}
+
+.modal-header {
+  padding: 12px 18px;
+  background: #F8FAFC;
+  border-bottom: 1px solid #E2E8F0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #64748B;
+}
+
+.modal-body {
+  padding: 18px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  padding: 10px 18px;
+  background: #F8FAFC;
+  border-top: 1px solid #E2E8F0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.form-group {
+  margin-bottom: 12px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.form-control {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  font-size: 13.5px;
+  font-family: inherit;
+}
+
+.alert-info-box {
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: #1E40AF;
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.history-filter-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th, .table td {
+  border: 1px solid #E2E8F0;
+  padding: 7px 10px;
+}
+
+.table th {
+  background: #F1F5F9;
+  font-weight: 600;
+}
+
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toast {
+  background: #FFF;
+  border-left: 4px solid var(--primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+}
+
+.toast.success { border-left-color: #059669; }
+.toast.success i { color: #059669; }
+.toast.warning { border-left-color: #D97706; }
+.toast.warning i { color: #D97706; }
+.toast.error { border-left-color: #DC2626; }
+.toast.error i { color: #DC2626; }
+
+/* ==============================================================================
+   @MEDIA PRINT: EXACT A4 SINGLE-PAGE REPLICA
+   ============================================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 3mm 4.5mm 2.5mm 4.5mm; /* Tight margins to guarantee single page */
+  }
+
+  html, body {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .sheet-viewport {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+
+  .a4-document {
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+    max-width: 200mm !important;
+    height: 100% !important;
+    max-height: 290mm !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  .sheet-title-banner h1 {
+    font-size: 16px !important;
+    margin-bottom: 2px !important;
+  }
+
+  .sheet-header-grid {
+    margin-bottom: 2px !important;
+    font-size: 11px !important;
+  }
+
+  .header-cell {
+    padding: 1.5px 3px !important;
+  }
+
+  .cell-input {
+    border-bottom: none !important;
+    font-size: 11px !important;
+    padding: 0 !important;
+  }
+
+  .grid-table {
+    font-size: 9.8px !important;
+    line-height: 1.12 !important;
+  }
+
+  .grid-table th {
+    height: 16px !important;
+    font-size: 9.8px !important;
+    background-color: #F0F0F0 !important;
+  }
+
+  .grid-table tbody tr {
+    height: 14.4px !important;
+  }
+
+  .col-border-right {
+    border-right: 2.5px solid #CA8A04 !important;
+  }
+
+  .td-no, .td-unit {
+    font-size: 9.5px !important;
+  }
+
+  .td-name {
+    font-size: 9.5px !important;
+    max-width: 135px !important;
+  }
+
+  .cell-num-input {
+    font-size: 9.8px !important;
+  }
+
+  .signatures-wrapper {
+    margin-top: 2px !important;
+    gap: 3px !important;
+  }
+
+  .sig-block {
+    font-size: 9.5px !important;
+    line-height: 1.2 !important;
+  }
+
+  .sig-input {
+    font-size: 9.5px !important;
+  }
+
+  /* Don't show yellow highlight on print, keep crisp */
+  .grid-table tbody tr.has-qty {
+    background-color: transparent !important;
+  }
+}
